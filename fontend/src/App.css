@@ -1,0 +1,235 @@
+.landingPageContainer {
+  width: 100vw;
+  height: 100vh;
+  background: url("/public/background.png");
+  background-repeat: no-repeat;
+  background-size: cover;
+  color: white;
+    overflow: hidden;
+}
+
+.landingPageContainer nav {
+  padding-inline: 1.2rem;
+  padding-block: 1.6rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+}
+
+.landingPageContainer nav h2 {
+  font-size: 1.8rem;
+  font-weight: 500;
+}
+
+.landingPageContainer nav .navlist {
+  display: flex;
+  gap: 1.6rem;
+  cursor: pointer;
+
+}
+
+.landingMainContainer {
+  display: flex;
+  justify-content: space-between;
+  padding-inline: 3rem;
+  height: 80vh;
+  align-items: center;
+}
+
+.landingMainContainer>div:nth-child(1) {
+  font-size: 2rem;
+}
+
+.landingMainContainer>div:nth-child(1) div[role='button'] {
+  background: #D97500;
+  width: fit-content;
+  padding: 1rem;
+  border-radius: 20px;
+  margin-top: 1.9rem;
+}
+
+.landingMainContainer>div:nth-child(1) div[role='button'] a {
+  text-decoration: none;
+  color: white;
+  font-size: 1.7rem;
+}
+
+.landingMainContainer>div:nth-child(2) img {
+  height: 70vh;
+  width: auto;
+}
+
+.navlist{
+  margin-right: 15px;
+  margin-bottom: 20px;
+}
+
+.navHeader{
+  margin-left: 30px;
+  margin-bottom: 20px;
+}
+
+.get-started-btn{
+  background-color: white;
+}
+
+.bold:hover{
+  font-size: 80px;
+  transition: 0.5s ease-in-out;
+
+}
+
+    @media (max-width: 768px) {
+      .slideshow-img {
+        display: none;
+      }
+
+      .landingMainContainer h1 {
+        font-size: 28px !important;
+        text-align: center;
+      }
+
+      .landingMainContainer p {
+        font-size: 20px !important;
+        text-align: center;
+      }
+
+      .navlist {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .bold:hover{
+        font-size: 30px;
+      }
+    }
+
+    .navItems-desktop {
+  display: flex;
+  gap: 20px;
+}
+
+/* Hide desktop nav on small screens */
+@media (max-width: 768px) {
+  .navItems-desktop {
+    display: none;
+  }
+
+  .dropdownMenu {
+    display: block;
+  }
+}
+
+/* Dropdown menu base (hidden on desktop) */
+.dropdownMenu {
+  position: relative;
+  display: none;
+}
+
+/* Button that toggles dropdown */
+.menu-toggle {
+  background-color: orange;
+  color: white;
+  padding: 10px 20px;
+  font-weight: bold;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Dropdown content */
+.dropdown-content {
+  position: absolute;
+  top: 45px;
+  right: 0;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  padding: 10px;
+  z-index: 100;
+}
+
+.dropdown-content .login-text {
+  display: block;
+  margin: 10px 0;
+  font-size: 16px;
+  color: black;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .landingMainContainer {
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    padding: 1rem;
+  }
+
+  .landingMainContainer > div:nth-child(1) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .landingMainContainer > div:nth-child(1) div[role='button'] {
+    padding: 0.6rem 1rem;
+    border-radius: 12px;
+    margin-top: 1rem;
+    font-size: 1rem;
+  }
+
+  .landingMainContainer > div:nth-child(1) div[role='button'] a {
+    font-size: 1.2rem;
+  }
+}
+
+
+.img-div{
+  /* width:300px; */
+ cursor: pointer;
+}
+
+.navbar{
+  display:flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-right: 20px;
+  text-align: center;
+}
+
+.navbar >IconButton{
+  gap:10px;
+}
+
+.meetContainer{
+ 
+  display: flex;
+  padding-inline: 20px;
+  height: 80vh;
+  gap: 10vw;
+  justify-content: center;
+}
+
+.leftPanel{
+ height: 100%;
+ display: flex;
+ align-items: center;
+}
+
+.rightPanel{
+  display: flex;
+  align-items: center;
+  
+}
+
+.rightPanel > img{
+  height: auto;
+  width: 40vh;
+  border-radius: 20px;
+}
+
+
