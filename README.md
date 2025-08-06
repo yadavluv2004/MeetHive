@@ -51,7 +51,7 @@ MeetHive empowers users with a smooth, scalable, and secure virtual meeting expe
 
 ## 📷 UI Preview
 
-> 💡 _Add your own screenshots or screen recordings here._
+![MeetHive UI Screenshot](https://raw.githubusercontent.com/yadavluv2004/MeetHive/main/public/WhatsApp%20Image%202025-07-28%20at%2022.48.14_a6c44e02.jpg)
 
 ---
 
