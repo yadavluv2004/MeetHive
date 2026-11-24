@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 
 const ROOM_RE = /^[a-zA-Z0-9_-]{3,64}$/;
+const CLIENT_ID_RE = /^[a-zA-Z0-9_-]{8,64}$/;
 const MAX_ROOM_SIZE = Number(process.env.MAX_ROOM_SIZE) || 12; // mesh topology - keep it modest
 const MAX_HISTORY = 200;
 const MAX_MESSAGE_LENGTH = 1000;
@@ -9,6 +10,12 @@ const ALLOWED_REACTIONS = new Set(["👍", "❤️", "😂", "😮", "😢", "�
 /**
  * rooms: Map<roomId, { participants: Map<socketId, Participant>, messages: Message[] }>
  * Participant: { id, name, audio, video, screen, hand, joinedAt }
+ * clientIds: Map<socketId, clientId> - stable per-browser-session id used to detect rejoins.
+ *
+ * Why clientId: when a phone switches Wi-Fi <-> cellular its IP changes, the socket reconnects
+ * with a NEW socket id, but the server only notices the old socket is dead after the heartbeat
+ * timeout (~20-40s). Without dedupe the same person shows up twice. A rejoin with the same
+ * clientId evicts the stale entry immediately.
  */
 const rooms = new Map();
 
@@ -54,7 +61,14 @@ export const connectToSocket = (server, corsOptions) => {
         const leave = () => {
             const room = getRoom();
             if (!room) return;
+            if (!room.participants.has(socket.id)) {
+                // already evicted by a rejoin of the same client - nothing to announce
+                socket.leave(roomId);
+                roomId = null;
+                return;
+            }
             room.participants.delete(socket.id);
+            room.clientIds.delete(socket.id);
             socket.to(roomId).emit("participant-left", socket.id);
             socket.leave(roomId);
             if (room.participants.size === 0) rooms.delete(roomId);
@@ -70,9 +84,27 @@ export const connectToSocket = (server, corsOptions) => {
 
             let room = rooms.get(requested);
             if (!room) {
-                room = { participants: new Map(), messages: [] };
+                room = { participants: new Map(), clientIds: new Map(), messages: [] };
                 rooms.set(requested, room);
             }
+
+            // Same browser session rejoining (network switch, reconnect): drop the stale entry first
+            const clientId = CLIENT_ID_RE.test(String(payload?.clientId || "")) ? payload.clientId : null;
+            if (clientId) {
+                for (const [staleId, cid] of room.clientIds) {
+                    if (cid !== clientId || staleId === socket.id) continue;
+                    room.participants.delete(staleId);
+                    room.clientIds.delete(staleId);
+                    io.to(requested).emit("participant-left", staleId);
+                    const stale = io.sockets.sockets.get(staleId);
+                    if (stale) {
+                        stale.leave(requested);
+                        stale.emit("replaced");
+                        stale.disconnect(true);
+                    }
+                }
+            }
+
             if (room.participants.size >= MAX_ROOM_SIZE) {
                 return reply({ ok: false, error: `This meeting is full (max ${MAX_ROOM_SIZE} people)` });
             }
@@ -89,6 +121,7 @@ export const connectToSocket = (server, corsOptions) => {
 
             const existing = [...room.participants.values()];
             room.participants.set(socket.id, participant);
+            if (clientId) room.clientIds.set(socket.id, clientId);
             roomId = requested;
             socket.join(roomId);
 

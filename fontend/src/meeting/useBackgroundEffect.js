@@ -3,6 +3,7 @@ import { CUSTOM_ID, findBackground } from "./backgrounds";
 
 const EFFECT_KEY = "meethive:bg-effect";
 const CUSTOM_KEY = "meethive:bg-custom";
+const FRAME_KEY = "meethive:auto-frame";
 
 const read = (key) => {
     try {
@@ -23,18 +24,20 @@ const write = (key, value) => {
 };
 
 /**
- * Applies the selected virtual background to a camera track.
- * Returns the track to display/send (the raw track when no effect is active or
+ * Applies the selected virtual background and/or auto-framing to a camera track.
+ * Returns the track to display/send (the raw track when nothing is active or
  * while the segmentation model is loading).
  */
 export default function useBackgroundEffect(rawTrack) {
     const [effectId, setEffectId] = useState(() => read(EFFECT_KEY) || "none");
     const [customSrc, setCustomSrc] = useState(() => read(CUSTOM_KEY));
+    const [autoFrame, setAutoFrameState] = useState(() => read(FRAME_KEY) === "1");
     const [outTrack, setOutTrack] = useState(null);
     const [status, setStatus] = useState("idle"); // idle | loading | ready | error
 
     const effect = useMemo(() => findBackground(effectId, customSrc), [effectId, customSrc]);
     const effectRef = useRef(effect);
+    const autoFrameRef = useRef(autoFrame);
     const procRef = useRef(null);
 
     useEffect(() => {
@@ -42,7 +45,12 @@ export default function useBackgroundEffect(rawTrack) {
         procRef.current?.setEffect(effect);
     }, [effect]);
 
-    const active = !!rawTrack && effect.type !== "none";
+    useEffect(() => {
+        autoFrameRef.current = autoFrame;
+        procRef.current?.setOptions?.({ autoFrame });
+    }, [autoFrame]);
+
+    const active = !!rawTrack && (effect.type !== "none" || autoFrame);
 
     useEffect(() => {
         if (!active) {
@@ -53,7 +61,7 @@ export default function useBackgroundEffect(rawTrack) {
         setStatus("loading");
 
         import("./backgroundProcessor")
-            .then(({ createBackgroundProcessor }) => createBackgroundProcessor(rawTrack, effectRef.current))
+            .then(({ createBackgroundProcessor }) => createBackgroundProcessor(rawTrack, effectRef.current, { autoFrame: autoFrameRef.current }))
             .then((proc) => {
                 if (cancelled) {
                     proc.stop();
@@ -90,7 +98,12 @@ export default function useBackgroundEffect(rawTrack) {
         [select]
     );
 
+    const setAutoFrame = useCallback((on) => {
+        setAutoFrameState(!!on);
+        write(FRAME_KEY, on ? "1" : null);
+    }, []);
+
     const track = active && outTrack && status === "ready" ? outTrack : rawTrack;
 
-    return { track, effectId: effect.id, customSrc, status, select, setCustomImage };
+    return { track, effectId: effect.id, customSrc, status, select, setCustomImage, autoFrame, setAutoFrame };
 }

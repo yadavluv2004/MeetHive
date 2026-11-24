@@ -59,6 +59,58 @@ function ControlButton({ active = true, danger, onClick, label, children, badge,
     );
 }
 
+// Floating self-view. Drag it anywhere; on release it snaps to the nearest corner.
+function SelfPip({ children }) {
+    const [corner, setCorner] = useState({ v: "bottom", h: "right" });
+    const [drag, setDrag] = useState(null); // { dx, dy } while dragging
+    const ref = useRef(null);
+    const startRef = useRef(null);
+
+    const onPointerDown = (e) => {
+        if (e.button !== 0 || e.target.closest("button")) return;
+        startRef.current = { x: e.clientX, y: e.clientY };
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setDrag({ dx: 0, dy: 0 });
+    };
+
+    const onPointerMove = (e) => {
+        if (!startRef.current) return;
+        setDrag({ dx: e.clientX - startRef.current.x, dy: e.clientY - startRef.current.y });
+    };
+
+    const onPointerUp = () => {
+        if (!startRef.current) return;
+        startRef.current = null;
+        const el = ref.current;
+        const parent = el?.offsetParent;
+        if (el && parent) {
+            const r = el.getBoundingClientRect();
+            const p = parent.getBoundingClientRect();
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            setCorner({
+                v: cy < p.top + p.height / 2 ? "top" : "bottom",
+                h: cx < p.left + p.width / 2 ? "left" : "right",
+            });
+        }
+        setDrag(null);
+    };
+
+    return (
+        <div
+            ref={ref}
+            className={`self-pip ${corner.v} ${corner.h} ${drag ? "dragging" : ""}`}
+            style={drag ? { transform: `translate(${drag.dx}px, ${drag.dy}px)` } : undefined}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+        >
+            {children}
+        </div>
+    );
+}
+
 export default function Room({ code, name, media, background, wallpaper, onLeave, onCopyLink }) {
     const toast = useToast();
     const [panel, setPanel] = useState(null); // 'chat' | 'people' | null
@@ -212,10 +264,15 @@ export default function Room({ code, name, media, background, wallpaper, onLeave
     const presenter = remoteTiles.find((t) => t.screen) || (screenTrack ? selfTile : null);
     const spotlightId = activePin || presenter?.id || null;
     const spotlight = spotlightId ? tiles.find((t) => t.id === spotlightId) : null;
-    const others = spotlight ? tiles.filter((t) => t.id !== spotlight.id) : tiles;
+
+    // Picture-in-picture: once someone else is in the call, your own video floats
+    // in a small corner window and the stage is given to everyone else.
+    const selfInPip = remoteTiles.length > 0 && spotlight?.id !== selfTile.id;
+    const stageTiles = selfInPip ? remoteTiles : tiles;
+    const others = spotlight ? stageTiles.filter((t) => t.id !== spotlight.id) : stageTiles;
 
     const stageRef = useRef(null);
-    const grid = useBestGrid(stageRef, spotlight ? 1 : tiles.length, 12, spotlight ? "spotlight" : "grid");
+    const grid = useBestGrid(stageRef, spotlight ? 1 : stageTiles.length, 12, spotlight ? "spotlight" : "grid");
     const togglePin = useCallback((id) => setPinnedId((cur) => (cur === id ? null : id)), []);
 
     const people = [
@@ -272,14 +329,20 @@ export default function Room({ code, name, media, background, wallpaper, onLeave
                         </>
                     ) : (
                         <div className="grid-stage" ref={stageRef}>
-                            {tiles.map((t) => (
+                            {stageTiles.map((t) => (
                                 <VideoTile
                                     key={t.id}
-                                    {...tileProps(t, tiles.length > 6 ? "small" : "normal")}
+                                    {...tileProps(t, stageTiles.length > 6 ? "small" : "normal")}
                                     style={{ width: grid.width, height: grid.height }}
                                 />
                             ))}
                         </div>
+                    )}
+
+                    {selfInPip && (
+                        <SelfPip>
+                            <VideoTile {...tileProps(selfTile, "small")} />
+                        </SelfPip>
                     )}
 
                     {tiles.length === 1 && meeting.status === "joined" && !aloneDismissed && (
@@ -380,7 +443,7 @@ export default function Room({ code, name, media, background, wallpaper, onLeave
                         )}
                     </div>
                     <ControlButton
-                        className={background.effectId !== "none" || wallpaper.id !== "theme" ? "highlight" : ""}
+                        className={background.effectId !== "none" || background.autoFrame || wallpaper.id !== "theme" ? "highlight" : ""}
                         onClick={() => setShowBackgrounds(true)}
                         label="Backgrounds & effects"
                     >

@@ -38,8 +38,15 @@ const tuneBitrate = (peers, screen) => {
     });
 };
 
+const newClientId = () =>
+    (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^a-zA-Z0-9_-]/g, "");
+
 export default function useMeeting({ code, name, audioTrack, videoTrack, audioOn, videoOn, screenOn, hand, onEvent }) {
     const [status, setStatus] = useState("connecting"); // connecting | joined | reconnecting | error
+    // Stable for this meeting session (kept in memory, so a duplicated tab gets its own id).
+    // Sent on every (re)join so the server can replace our stale entry after a network switch.
+    const clientIdRef = useRef(null);
+    if (!clientIdRef.current) clientIdRef.current = newClientId();
     const [error, setError] = useState(null);
     const [selfId, setSelfId] = useState(null);
     const [participantMap, setParticipantMap] = useState({});
@@ -187,7 +194,10 @@ export default function useMeeting({ code, name, audioTrack, videoTrack, audioOn
 
         const join = () => {
             const s = stateRef.current;
-            socket.emit("join-room", { room: code, name: s.name, audio: s.audioOn, video: s.videoOn }, (res) => {
+            socket.emit(
+                "join-room",
+                { room: code, name: s.name, audio: s.audioOn, video: s.videoOn, clientId: clientIdRef.current },
+                (res) => {
                 if (disposed) return;
                 if (!res?.ok) {
                     setStatus("error");
@@ -218,7 +228,8 @@ export default function useMeeting({ code, name, audioTrack, videoTrack, audioOn
                     screen: latest.screenOn,
                     hand: latest.hand,
                 });
-            });
+                }
+            );
         };
 
         (async () => {
@@ -240,11 +251,22 @@ export default function useMeeting({ code, name, audioTrack, videoTrack, audioOn
                 if (reason !== "io client disconnect") setStatus("reconnecting");
             });
 
+            // This session was taken over by a newer connection (e.g. the same meeting opened again).
+            // The server disconnects us on purpose, so socket.io won't auto-reconnect - show it clearly.
+            socket.on("replaced", () => {
+                if (disposed) return;
+                closeAllPeers();
+                setParticipantMap({});
+                setStatus("error");
+                setError("You joined this meeting from another tab or device, so this window was disconnected.");
+            });
+
             socket.on("connect_error", () => {
                 if (!disposed) setStatus((s) => (s === "error" ? s : "reconnecting"));
             });
 
             socket.on("participant-joined", (p) => {
+                if (p.id === socket.id) return;
                 setParticipantMap((map) => ({ ...map, [p.id]: { ...p, stream: null, connection: "new" } }));
                 emitEvent("joined", p);
             });

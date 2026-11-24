@@ -97,7 +97,7 @@ export default function Lobby({ code, media, background, wallpaper, name, setNam
                             </button>
                         </div>
                         <button
-                            className={`preview-effects ${background.effectId !== "none" ? "active" : ""}`}
+                            className={`preview-effects ${background.effectId !== "none" || background.autoFrame ? "active" : ""}`}
                             onClick={() => setPickerTab("camera")}
                             title="Backgrounds & effects"
                             aria-label="Backgrounds and effects"

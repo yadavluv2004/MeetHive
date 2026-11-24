@@ -6,6 +6,8 @@ import BlurCircularIcon from "@mui/icons-material/BlurCircular";
 import AddPhotoAlternateOutlinedIcon from "@mui/icons-material/AddPhotoAlternateOutlined";
 import FormatColorFillOutlinedIcon from "@mui/icons-material/FormatColorFillOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import CenterFocusStrongOutlinedIcon from "@mui/icons-material/CenterFocusStrongOutlined";
+import CropFreeIcon from "@mui/icons-material/CropFree";
 import { BACKGROUNDS, CUSTOM_ID, prepareCustomImage, renderScene } from "./backgrounds";
 import { preloadSegmenter } from "./backgroundProcessor";
 import { WALLPAPERS } from "./useWallpaper";
@@ -164,14 +166,29 @@ export default function BackgroundPicker({ background, wallpaper, cameraOn, onCl
                             {!cameraOn && <div className="alert alert-warn">Turn on your camera to see the effect.</div>}
                             {background.status === "loading" && (
                                 <div className="bg-status">
-                                    <span className="spinner spinner-sm" /> Preparing background effect…
+                                    <span className="spinner spinner-sm" /> Preparing camera effect…
                                 </div>
                             )}
                             {background.status === "error" && (
                                 <div className="alert alert-error">
-                                    Background effects couldn't load on this device or network. Your normal camera is being used.
+                                    Camera effects couldn't load on this device or network. Your normal camera is being used.
                                 </div>
                             )}
+
+                            <div className="section-label">Framing</div>
+                            <div className="bg-grid">
+                                <Tile icon active={!background.autoFrame} label="Off" onClick={() => background.setAutoFrame(false)}>
+                                    <CropFreeIcon />
+                                </Tile>
+                                <Tile
+                                    icon
+                                    active={background.autoFrame}
+                                    label="Auto-frame"
+                                    onClick={() => background.setAutoFrame(true)}
+                                >
+                                    <CenterFocusStrongOutlinedIcon />
+                                </Tile>
+                            </div>
 
                             <div className="section-label">Blur</div>
                             <div className="bg-grid">

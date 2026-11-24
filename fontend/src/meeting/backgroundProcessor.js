@@ -9,6 +9,9 @@ import { renderScene } from "./backgrounds";
  *   is in the background (requestAnimationFrame would pause and freeze your video for others).
  * - One output track is kept for the lifetime of the camera track; changing the effect only
  *   swaps what is drawn, so peers never need a new track.
+ * - Optional auto-framing: the person mask gives a bounding box, and every draw reads from a
+ *   smoothly eased crop of the camera frame (a digital pan/zoom). With framing off the crop
+ *   is the full frame, so the output is identical to having no framing at all.
  */
 
 const TASKS_VISION_VERSION = "1.2.3";
@@ -21,6 +24,17 @@ const SEG_W = 256;
 const SEG_H = 144;
 const MAX_W = 1280;
 const FPS = 30;
+
+// Auto-framing tuning (all values are fractions of the camera frame)
+const MIN_CROP = 0.55; // max ~1.8x zoom: more than that gets visibly soft on webcams
+const FRAME_MASK_EVERY = 3; // with no background effect, segment every 3rd frame (~10 fps) to save CPU
+const EASE = 0.07; // per-frame easing toward the goal crop (~1 s to settle)
+const DEADZONE_MOVE = 0.035; // ignore small shifts so the frame doesn't wobble
+const DEADZONE_SIZE = 0.05;
+const LOST_FRAMES = 45; // ~1.5 s without a person -> ease back to the full frame
+const FULL = Object.freeze({ x: 0, y: 0, w: 1, h: 1 });
+
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 let segmenterPromise = null;
 
@@ -82,7 +96,7 @@ const drawCover = (ctx, img, w, h) => {
     ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
 };
 
-export async function createBackgroundProcessor(inputTrack, initialEffect) {
+export async function createBackgroundProcessor(inputTrack, initialEffect, initialOptions = {}) {
     const segmenter = await loadSegmenter();
 
     const video = document.createElement("video");
@@ -123,6 +137,114 @@ export async function createBackgroundProcessor(inputTrack, initialEffect) {
     let stopped = false;
     let lastTs = 0;
 
+    let autoFrame = !!initialOptions.autoFrame;
+    let crop = { ...FULL }; // what is drawn right now
+    let goal = { ...FULL }; // where the crop is easing to
+    let lostFor = 0;
+    let frameNo = 0;
+
+    /** Draw the (cropped) camera frame into a destination rect. Full crop == plain drawImage. */
+    const drawVideo = (c, dx, dy, dw, dh) => {
+        const vw = video.videoWidth || W;
+        const vh = video.videoHeight || H;
+        c.drawImage(video, crop.x * vw, crop.y * vh, crop.w * vw, crop.h * vh, dx, dy, dw, dh);
+    };
+
+    /** Person bounding box from the smoothed mask, or null when nobody is in frame. */
+    const personBox = () => {
+        const cols = new Float32Array(SEG_W);
+        let top = -1;
+        let bottom = -1;
+        let total = 0;
+        for (let y = 0; y < SEG_H; y++) {
+            let rowCount = 0;
+            const row = y * SEG_W;
+            for (let x = 0; x < SEG_W; x++) {
+                if (prevAlpha[row + x] > 0.5) {
+                    cols[x]++;
+                    rowCount++;
+                }
+            }
+            if (rowCount >= 3) {
+                if (top < 0) top = y;
+                bottom = y;
+            }
+            total += rowCount;
+        }
+        if (top < 0 || total < SEG_W * SEG_H * 0.01) return null; // <1% of the frame: treat as nobody
+        // horizontal extent by mass percentiles, so a stray hand/edge pixel doesn't widen the box
+        let acc = 0;
+        let left = 0;
+        let right = SEG_W - 1;
+        for (let x = 0; x < SEG_W; x++) {
+            acc += cols[x];
+            if (acc >= total * 0.03) {
+                left = x;
+                break;
+            }
+        }
+        acc = 0;
+        for (let x = SEG_W - 1; x >= 0; x--) {
+            acc += cols[x];
+            if (acc >= total * 0.03) {
+                right = x;
+                break;
+            }
+        }
+        return { x0: left / SEG_W, x1: (right + 1) / SEG_W, y0: top / SEG_H, y1: (bottom + 1) / SEG_H };
+    };
+
+    /** Head-and-shoulders framing around the person, keeping the camera's aspect ratio. */
+    const framingFor = (b) => {
+        const bw = b.x1 - b.x0;
+        // only look at the upper body: roughly one shoulder-width below the top of the head
+        // (bw is a fraction of the width; convert that distance into a fraction of the height)
+        const bh = Math.min(b.y1, b.y0 + bw * 0.9 * (W / H)) - b.y0;
+        const size = clamp(Math.max(bw * 1.75, bh * 1.25), MIN_CROP, 1);
+        const cx = (b.x0 + b.x1) / 2;
+        return {
+            x: clamp(cx - size / 2, 0, 1 - size),
+            y: clamp(b.y0 - size * 0.14, 0, 1 - size), // a little headroom above the head
+            w: size,
+            h: size,
+        };
+    };
+
+    const updateGoal = (maskFresh) => {
+        if (!autoFrame) {
+            goal = { ...FULL };
+            lostFor = 0;
+            return;
+        }
+        if (!maskFresh) return;
+        const box = personBox();
+        if (!box) {
+            if (++lostFor >= LOST_FRAMES / (effect.type === "none" ? FRAME_MASK_EVERY : 1)) goal = { ...FULL };
+            return;
+        }
+        lostFor = 0;
+        const next = framingFor(box);
+        const moved =
+            Math.abs(next.x + next.w / 2 - (goal.x + goal.w / 2)) > DEADZONE_MOVE ||
+            Math.abs(next.y - goal.y) > DEADZONE_MOVE ||
+            Math.abs(next.w - goal.w) > DEADZONE_SIZE;
+        if (moved) goal = next;
+    };
+
+    const easeCrop = () => {
+        const k = EASE;
+        const w = crop.w + (goal.w - crop.w) * k;
+        let x = crop.x + (goal.x - crop.x) * k;
+        let y = crop.y + (goal.y - crop.y) * k;
+        x = clamp(x, 0, 1 - w);
+        y = clamp(y, 0, 1 - w);
+        crop = { x, y, w, h: w };
+        // snap when close, so "framing off" ends at exactly the untouched full frame
+        if (Math.abs(crop.w - goal.w) < 0.002 && Math.abs(crop.x - goal.x) < 0.002 && Math.abs(crop.y - goal.y) < 0.002) {
+            crop = { ...goal };
+        }
+    };
+
     const loadEffectAssets = (eff) => {
         bgImage = null;
         if (eff?.type === "image" && eff.src) {
@@ -140,10 +262,10 @@ export async function createBackgroundProcessor(inputTrack, initialEffect) {
             const px = Math.max(2, Math.round((effect.amount * W) / 640));
             if (filterOK) {
                 ctx.filter = `blur(${px}px)`;
-                ctx.drawImage(video, -px * 2, -px * 2, W + px * 4, H + px * 4);
+                drawVideo(ctx, -px * 2, -px * 2, W + px * 4, H + px * 4);
                 ctx.filter = "none";
             } else {
-                smallCtx.drawImage(video, 0, 0, small.width, small.height);
+                drawVideo(smallCtx, 0, 0, small.width, small.height);
                 ctx.imageSmoothingEnabled = true;
                 ctx.drawImage(small, 0, 0, W, H);
             }
@@ -152,7 +274,7 @@ export async function createBackgroundProcessor(inputTrack, initialEffect) {
         } else if (effect.type === "image" && bgImage) {
             drawCover(ctx, bgImage, W, H);
         } else {
-            ctx.drawImage(video, 0, 0, W, H);
+            drawVideo(ctx, 0, 0, W, H);
         }
     };
 
@@ -187,27 +309,37 @@ export async function createBackgroundProcessor(inputTrack, initialEffect) {
         if (stopped || busy || video.readyState < 2) return;
         busy = true;
         try {
-            if (effect.type === "none") {
-                ctx.drawImage(video, 0, 0, W, H);
-                return;
+            const hasEffect = effect.type !== "none";
+            // the mask is needed for the effect, or (less often) to find the person for framing
+            let maskFresh = false;
+            if (hasEffect || (autoFrame && frameNo++ % FRAME_MASK_EVERY === 0)) {
+                try {
+                    updateMask();
+                    maskFresh = true;
+                } catch (e) {
+                    // keep last mask on a transient failure
+                }
             }
             try {
-                updateMask();
+                updateGoal(maskFresh && hasMask);
+                easeCrop();
             } catch (e) {
-                // keep last mask on a transient failure
+                crop = { ...FULL }; // framing must never break the video
             }
-            if (!hasMask) {
-                ctx.drawImage(video, 0, 0, W, H);
+
+            if (!hasEffect || !hasMask) {
+                drawVideo(ctx, 0, 0, W, H);
                 return;
             }
             drawBackground();
 
             fgCtx.globalCompositeOperation = "copy";
             fgCtx.filter = filterOK ? `blur(${Math.max(1, Math.round(W / 400))}px)` : "none";
-            fgCtx.drawImage(mask, 0, 0, W, H);
+            // the mask is in full-frame coordinates: cut out the same crop as the video
+            fgCtx.drawImage(mask, crop.x * SEG_W, crop.y * SEG_H, crop.w * SEG_W, crop.h * SEG_H, 0, 0, W, H);
             fgCtx.filter = "none";
             fgCtx.globalCompositeOperation = "source-in";
-            fgCtx.drawImage(video, 0, 0, W, H);
+            drawVideo(fgCtx, 0, 0, W, H);
             fgCtx.globalCompositeOperation = "source-over";
 
             ctx.drawImage(fg, 0, 0);
@@ -229,6 +361,9 @@ export async function createBackgroundProcessor(inputTrack, initialEffect) {
             if (!next || next === effect) return;
             effect = next;
             loadEffectAssets(next);
+        },
+        setOptions(opts = {}) {
+            if ("autoFrame" in opts) autoFrame = !!opts.autoFrame; // turning off eases back to the full frame
         },
         stop() {
             stopped = true;
