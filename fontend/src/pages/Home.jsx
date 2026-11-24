@@ -5,6 +5,7 @@ import LinkIcon from "@mui/icons-material/Link";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import Logo from "../components/Logo";
+import useSeo from "../utils/useSeo";
 import UserMenu from "../components/UserMenu";
 import ThemeSwitcher from "../components/ThemeSwitcher";
 import JoinForm from "../components/JoinForm";
@@ -25,6 +26,7 @@ const greeting = () => {
 
 export default function Home() {
     const navigate = useNavigate();
+    useSeo({ title: "Dashboard – MeetHive", path: "/home", noindex: true });
     const toast = useToast();
     const { user, getHistoryOfUser } = useAuth();
     const [recent, setRecent] = useState(null);

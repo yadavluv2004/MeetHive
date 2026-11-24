@@ -2,6 +2,9 @@ import { Server } from "socket.io";
 
 const ROOM_RE = /^[a-zA-Z0-9_-]{3,64}$/;
 const CLIENT_ID_RE = /^[a-zA-Z0-9_-]{8,64}$/;
+// When a connection drops without an explicit "leave" (network switch, brief signal loss),
+// keep the participant's spot this long so a quick rejoin swaps their tile silently.
+const REJOIN_GRACE_MS = Number(process.env.REJOIN_GRACE_MS) || 6000;
 const MAX_ROOM_SIZE = Number(process.env.MAX_ROOM_SIZE) || 12; // mesh topology - keep it modest
 const MAX_HISTORY = 200;
 const MAX_MESSAGE_LENGTH = 1000;
@@ -84,18 +87,23 @@ export const connectToSocket = (server, corsOptions) => {
 
             let room = rooms.get(requested);
             if (!room) {
-                room = { participants: new Map(), clientIds: new Map(), messages: [] };
+                room = { participants: new Map(), clientIds: new Map(), pendingLeaves: new Map(), messages: [] };
                 rooms.set(requested, room);
             }
 
             // Same browser session rejoining (network switch, reconnect): drop the stale entry first
             const clientId = CLIENT_ID_RE.test(String(payload?.clientId || "")) ? payload.clientId : null;
+            let replaces = null;
             if (clientId) {
                 for (const [staleId, cid] of room.clientIds) {
                     if (cid !== clientId || staleId === socket.id) continue;
+                    clearTimeout(room.pendingLeaves.get(staleId));
+                    room.pendingLeaves.delete(staleId);
                     room.participants.delete(staleId);
                     room.clientIds.delete(staleId);
-                    io.to(requested).emit("participant-left", staleId);
+                    // No "participant-left" here: others get one "participant-joined" with `replaces`,
+                    // so the tile is swapped silently instead of showing "X left" / "X joined".
+                    replaces = staleId;
                     const stale = io.sockets.sockets.get(staleId);
                     if (stale) {
                         stale.leave(requested);
@@ -125,7 +133,7 @@ export const connectToSocket = (server, corsOptions) => {
             roomId = requested;
             socket.join(roomId);
 
-            socket.to(roomId).emit("participant-joined", participant);
+            socket.to(roomId).emit("participant-joined", replaces ? { ...participant, replaces } : participant);
             reply({ ok: true, self: participant, participants: existing, messages: room.messages });
         });
 
@@ -175,8 +183,19 @@ export const connectToSocket = (server, corsOptions) => {
             io.to(roomId).emit("reaction", { from: socket.id, name: me.name, emoji, id: `${Date.now()}-${socket.id}` });
         });
 
+        // Explicit leave (Leave button, tab closed) -> remove immediately
         socket.on("leave-room", leave);
-        socket.on("disconnect", leave);
+
+        // Connection lost -> hold the spot briefly in case the same client rejoins
+        socket.on("disconnect", () => {
+            const room = getRoom();
+            if (!room || !room.participants.has(socket.id) || !room.clientIds.has(socket.id)) return leave();
+            const timer = setTimeout(() => {
+                room.pendingLeaves.delete(socket.id);
+                leave();
+            }, REJOIN_GRACE_MS);
+            room.pendingLeaves.set(socket.id, timer);
+        });
     });
 
     return io;

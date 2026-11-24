@@ -69,6 +69,7 @@ export default function useMeeting({ code, name, audioTrack, videoTrack, audioOn
     useEffect(() => {
         let disposed = false;
         let socket = null;
+        let cleanupNetworkListeners = () => {};
         const peers = peersRef.current;
         const emitEvent = (type, payload) => onEventRef.current?.(type, payload);
 
@@ -261,12 +262,51 @@ export default function useMeeting({ code, name, audioTrack, videoTrack, audioOn
                 setError("You joined this meeting from another tab or device, so this window was disconnected.");
             });
 
+            // Network changed (Wi-Fi <-> cellular, back online): the old connection is dead but the
+            // browser may take ~20s+ to notice. Drop it now so we reconnect immediately; the server
+            // swaps our stale entry thanks to the clientId.
+            const forceReconnect = () => {
+                if (disposed || !socket?.connected) return;
+                socket.io.engine?.close();
+            };
+            const conn = navigator.connection;
+            let lastType = conn?.type;
+            const onConnChange = () => {
+                if (conn.type !== lastType) {
+                    lastType = conn.type;
+                    forceReconnect();
+                }
+            };
+            // Closing/reloading the tab is a real leave: tell the server so others see it at once
+            // (otherwise the server would hold the spot for the short rejoin grace period).
+            const onPageHide = () => socket?.connected && socket.emit("leave-room");
+            window.addEventListener("pagehide", onPageHide);
+            window.addEventListener("online", forceReconnect);
+            conn?.addEventListener?.("change", onConnChange);
+            cleanupNetworkListeners = () => {
+                window.removeEventListener("pagehide", onPageHide);
+                window.removeEventListener("online", forceReconnect);
+                conn?.removeEventListener?.("change", onConnChange);
+            };
+
             socket.on("connect_error", () => {
                 if (!disposed) setStatus((s) => (s === "error" ? s : "reconnecting"));
             });
 
-            socket.on("participant-joined", (p) => {
+            socket.on("participant-joined", ({ replaces, ...p }) => {
                 if (p.id === socket.id) return;
+                if (replaces) {
+                    // Same person reconnected (e.g. Wi-Fi <-> cellular): swap their tile silently
+                    closePeer(replaces);
+                    setParticipantMap((map) => {
+                        const next = { ...map };
+                        const old = next[replaces];
+                        delete next[replaces];
+                        next[p.id] = { ...p, joinedAt: old?.joinedAt ?? p.joinedAt, stream: null, connection: "new" };
+                        return next;
+                    });
+                    return;
+                }
                 setParticipantMap((map) => ({ ...map, [p.id]: { ...p, stream: null, connection: "new" } }));
                 emitEvent("joined", p);
             });
@@ -308,6 +348,7 @@ export default function useMeeting({ code, name, audioTrack, videoTrack, audioOn
 
         return () => {
             disposed = true;
+            cleanupNetworkListeners();
             joinedRef.current = false;
             if (socket) {
                 socket.emit("leave-room");

@@ -1,9 +1,11 @@
 import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo";
+import useSeo from "../utils/useSeo";
 import "../App.css";
 
 export default function NotFound() {
     const navigate = useNavigate();
+    useSeo({ title: "Page not found – MeetHive", noindex: true });
     return (
         <div className="center-page">
             <Logo />

@@ -232,6 +232,7 @@ export default function useLocalMedia(active) {
 
     const selectAudioDevice = useCallback(
         async (deviceId) => {
+            if (deviceId === prefs.current.audioDeviceId && tracks.current.audio) return;
             setAudioDeviceId(deviceId);
             prefs.current.audioDeviceId = deviceId;
             savePrefs({ audioDeviceId: deviceId });
@@ -246,13 +247,20 @@ export default function useLocalMedia(active) {
 
     const selectVideoDevice = useCallback(
         async (deviceId) => {
+            if (deviceId === prefs.current.videoDeviceId && tracks.current.video) return;
             setVideoDeviceId(deviceId);
             prefs.current.videoDeviceId = deviceId;
             savePrefs({ videoDeviceId: deviceId });
             if (!tracks.current.video) return;
+            // Release the current camera before opening the next one. Phones (front/back) and many
+            // laptops can't open two cameras at once - they fail or stall for seconds otherwise.
+            // stop() doesn't fire `ended`, so the UI keeps the last frame until the new track arrives.
+            tracks.current.video.stop();
             try {
                 setTrack("video", await acquire("video", deviceId));
             } catch (e) {
+                setTrack("video", null);
+                setVideoOn(false);
                 setError(describeMediaError(e));
             }
         },

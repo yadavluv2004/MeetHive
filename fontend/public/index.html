@@ -17,10 +17,79 @@
         }
       })();
     </script>
-    <meta name="description" content="MeetHive - secure, free HD video meetings in your browser. No downloads required." />
-    <meta property="og:title" content="MeetHive - Video meetings for everyone" />
-    <meta property="og:description" content="Secure HD video calls, screen sharing and chat right in your browser." />
+    <title>MeetHive – Free Online Video Meetings &amp; Video Calls in Your Browser</title>
+    <meta name="description" content="MeetHive is a free video conferencing app. Start secure HD video meetings, share your screen and chat right in your browser – no downloads, guests join with just a code." />
+    <meta name="keywords" content="MeetHive, free video meeting, video conferencing, online video call, video chat, screen sharing, browser video call, Google Meet alternative, Zoom alternative, WebRTC" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="author" content="Luv Yadav" />
+    <meta name="application-name" content="MeetHive" />
+    <link rel="canonical" href="https://meethivefrontend.onrender.com/" />
+    <!-- Google Search Console: paste your verification tag here, e.g.
+    <meta name="google-site-verification" content="YOUR_CODE" /> -->
+
+    <!-- Open Graph (WhatsApp, LinkedIn, Facebook previews) -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="MeetHive" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://meethivefrontend.onrender.com/" />
+    <meta property="og:title" content="MeetHive – Free Online Video Meetings &amp; Video Calls in Your Browser" />
+    <meta property="og:description" content="Secure HD video calls, screen sharing and chat right in your browser. Free, no downloads." />
+    <meta property="og:image" content="https://meethivefrontend.onrender.com/logo3.png" />
+    <meta property="og:image:alt" content="MeetHive logo" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MeetHive – Free Online Video Meetings &amp; Video Calls in Your Browser" />
+    <meta name="twitter:description" content="Secure HD video calls, screen sharing and chat right in your browser. Free, no downloads." />
+    <meta name="twitter:image" content="https://meethivefrontend.onrender.com/logo3.png" />
+
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo3.png" />
+
+    <!-- Structured data: lets Google show MeetHive as a named web app with rich FAQ results -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://meethivefrontend.onrender.com/#website",
+          "name": "MeetHive",
+          "alternateName": ["Meet Hive", "MeetHive video meetings"],
+          "url": "https://meethivefrontend.onrender.com/"
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://meethivefrontend.onrender.com/#org",
+          "name": "MeetHive",
+          "url": "https://meethivefrontend.onrender.com/",
+          "logo": "https://meethivefrontend.onrender.com/logo3.png",
+          "founder": { "@type": "Person", "name": "Luv Yadav" }
+        },
+        {
+          "@type": "WebApplication",
+          "name": "MeetHive",
+          "url": "https://meethivefrontend.onrender.com/",
+          "applicationCategory": "CommunicationApplication",
+          "operatingSystem": "Any (web browser)",
+          "browserRequirements": "Requires JavaScript and a WebRTC-capable browser",
+          "description": "Free browser-based video conferencing with HD video, screen sharing, in-call chat and reactions.",
+          "featureList": ["HD video and audio", "Screen sharing", "In-call chat", "Reactions and raise hand", "Virtual backgrounds", "Guest join with a meeting code", "End-to-end encrypted media (DTLS-SRTP)"],
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+          "publisher": { "@id": "https://meethivefrontend.onrender.com/#org" }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            { "@type": "Question", "name": "Is MeetHive free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. MeetHive is free to use for video meetings, screen sharing and chat." } },
+            { "@type": "Question", "name": "Do I need to download anything to use MeetHive?", "acceptedAnswer": { "@type": "Answer", "text": "No. MeetHive runs entirely in your web browser on desktop, tablet or phone." } },
+            { "@type": "Question", "name": "Can guests join a MeetHive meeting without an account?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Anyone with the meeting code or link can join as a guest. You only need an account to start a meeting." } },
+            { "@type": "Question", "name": "Are MeetHive video calls secure?", "acceptedAnswer": { "@type": "Answer", "text": "Media is sent encrypted between browsers using WebRTC with DTLS-SRTP." } },
+            { "@type": "Question", "name": "Can I share my screen in MeetHive?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. You can share your whole screen, a window or a browser tab with one click." } }
+          ]
+        }
+      ]
+    }
+    </script>
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -28,10 +97,12 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <title>MeetHive - Video meetings for everyone</title>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run MeetHive.</noscript>
+    <noscript>
+      <h1>MeetHive – Free online video meetings in your browser</h1>
+      <p>MeetHive is a free video conferencing app with HD video calls, screen sharing, in-call chat and reactions. No downloads – guests join with just a meeting code. Please enable JavaScript to use MeetHive.</p>
+    </noscript>
     <div id="root"></div>
   </body>
 </html>

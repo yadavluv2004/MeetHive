@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState } from "react";
 
 export const THEMES = [
     { id: "burgundy", name: "Burgundy", swatch: ["#3F1D2E", "#FBCFE8"], meta: "#1B0C15" },
@@ -23,8 +23,18 @@ const ThemeContext = createContext({ theme: DEFAULT, setTheme: () => {} });
 export const ThemeProvider = ({ children }) => {
     const [theme, setThemeState] = useState(readTheme);
 
-    useEffect(() => {
-        document.documentElement.setAttribute("data-theme", theme);
+    // Layout effect: the new theme is applied before the browser paints, not a frame later.
+    // Transitions are paused during the switch so every element changes colour at once,
+    // instead of buttons/cards fading one by one over ~200 ms (which reads as "slow").
+    useLayoutEffect(() => {
+        const root = document.documentElement;
+        const switching = root.getAttribute("data-theme") !== null && root.getAttribute("data-theme") !== theme;
+        if (switching) root.classList.add("theme-switching");
+        root.setAttribute("data-theme", theme);
+        if (switching) {
+            void root.offsetHeight; // apply the new colours with transitions still off
+            requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+        }
         const meta = document.querySelector('meta[name="theme-color"]');
         const def = THEMES.find((t) => t.id === theme);
         if (meta && def) meta.setAttribute("content", def.meta);

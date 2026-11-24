@@ -12,6 +12,7 @@ import UserMenu from "../components/UserMenu";
 import ThemeSwitcher from "../components/ThemeSwitcher";
 import { useAuth } from "../contexts/AuthContext";
 import { generateMeetingCode } from "../utils/meetingCode";
+import useSeo from "../utils/useSeo";
 import "../App.css";
 
 const FEATURES = [
@@ -21,6 +22,14 @@ const FEATURES = [
     { icon: ChatBubbleOutlineIcon, title: "In-call chat & reactions", text: "Send messages, raise your hand and react without interrupting the speaker." },
     { icon: LockOutlinedIcon, title: "Private by design", text: "Media flows encrypted end-to-end between browsers with DTLS-SRTP." },
     { icon: DevicesIcon, title: "Any device", text: "Join from desktop, tablet or phone right in the browser — nothing to install." },
+];
+
+const FAQS = [
+    { q: "Is MeetHive free?", a: "Yes. MeetHive is free to use for video meetings, screen sharing and chat." },
+    { q: "Do I need to download anything to use MeetHive?", a: "No. MeetHive runs entirely in your web browser on desktop, tablet or phone." },
+    { q: "Can guests join a MeetHive meeting without an account?", a: "Yes. Anyone with the meeting code or link can join as a guest. You only need an account to start a meeting." },
+    { q: "Are MeetHive video calls secure?", a: "Media is sent encrypted between browsers using WebRTC with DTLS-SRTP." },
+    { q: "Can I share my screen in MeetHive?", a: "Yes. You can share your whole screen, a window or a browser tab with one click." },
 ];
 
 const MOCK_TILES = [
@@ -33,6 +42,7 @@ const MOCK_TILES = [
 export default function LandingPage() {
     const navigate = useNavigate();
     const { isAuthenticated } = useAuth();
+    useSeo({ path: "/" });
 
     const startMeeting = () => {
         if (isAuthenticated) navigate(`/meet/${generateMeetingCode()}`);
@@ -68,8 +78,8 @@ export default function LandingPage() {
                             <span className="gradient-text">from anywhere.</span>
                         </h1>
                         <p className="lead">
-                            MeetHive brings your team, class or family together with HD video calls, screen sharing
-                            and chat — right in the browser, across any network.
+                            MeetHive is a free video conferencing app that brings your team, class or family together with HD video
+                            calls, screen sharing and chat — right in the browser, across any network.
                         </p>
                         <div className="hero-actions">
                             <button className="btn btn-primary btn-lg" onClick={startMeeting}>
@@ -120,6 +130,18 @@ export default function LandingPage() {
                     </div>
                 </section>
 
+                <section className="features faq" aria-labelledby="faq-heading">
+                    <h2 id="faq-heading">Frequently asked questions</h2>
+                    <div className="faq-list">
+                        {FAQS.map(({ q, a }) => (
+                            <details className="feature-card faq-item" key={q}>
+                                <summary><h3>{q}</h3></summary>
+                                <p>{a}</p>
+                            </details>
+                        ))}
+                    </div>
+                </section>
+
                 <section className="cta-band">
                     <h2>Ready to start your first meeting?</h2>
                     <p>Create a free account in seconds and invite anyone with a link.</p>
@@ -130,6 +152,7 @@ export default function LandingPage() {
             <footer className="site-footer">
                 <Logo size="sm" />
                 <span>© {new Date().getFullYear()} MeetHive. Built with WebRTC.</span>
+                <span>Made by Luv Yadav</span>
             </footer>
         </div>
     );

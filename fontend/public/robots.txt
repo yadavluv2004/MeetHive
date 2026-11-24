@@ -1,3 +1,9 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Allow: /
+# Private app pages and individual meeting rooms should not appear in search
+Disallow: /meet/
+Disallow: /home
+Disallow: /history
+
+Sitemap: https://meethivefrontend.onrender.com/sitemap.xml

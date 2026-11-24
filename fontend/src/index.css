@@ -159,6 +159,14 @@ body {
   transition: background-color 0.2s, color 0.2s;
 }
 
+/* Set for two frames while the theme changes, so everything recolours instantly (see ThemeContext) */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
 *,
 *::before,
 *::after {

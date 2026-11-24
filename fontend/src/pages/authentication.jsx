@@ -7,6 +7,7 @@ import Logo from "../components/Logo";
 import ThemeSwitcher from "../components/ThemeSwitcher";
 import { useAuth } from "../contexts/AuthContext";
 import { errorMessage } from "../api/client";
+import useSeo from "../utils/useSeo";
 import "../App.css";
 
 const safeNext = (next) => (next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
@@ -16,6 +17,11 @@ export default function Authentication() {
     const navigate = useNavigate();
     const [params] = useSearchParams();
     const next = safeNext(params.get("next"));
+    useSeo({
+        title: "Sign in or create a free account – MeetHive",
+        description: "Sign in to MeetHive or create a free account to start HD video meetings with screen sharing and chat in your browser.",
+        path: "/auth",
+    });
 
     const [mode, setMode] = useState(params.get("mode") === "signup" ? "signup" : "signin");
     const [name, setName] = useState("");

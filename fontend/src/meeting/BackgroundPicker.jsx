@@ -21,14 +21,18 @@ const TABS = [
     { id: "theme", label: "Theme" },
 ];
 
-const useThumbnails = () =>
-    useMemo(() => {
-        const map = {};
+// Thumbnails are painted once per session, not every time the dialog opens.
+let thumbCache = null;
+const getThumbnails = () => {
+    if (!thumbCache) {
+        thumbCache = {};
         BACKGROUNDS.filter((b) => b.type === "scene").forEach((b) => {
-            map[b.id] = renderScene(b, 192, 108).toDataURL("image/jpeg", 0.8);
+            thumbCache[b.id] = renderScene(b, 192, 108).toDataURL("image/jpeg", 0.8);
         });
-        return map;
-    }, []);
+    }
+    return thumbCache;
+};
+const useThumbnails = () => useMemo(getThumbnails, []);
 
 function Tile({ active, label, onClick, children, icon, className = "" }) {
     return (

@@ -7,6 +7,7 @@ import VideoCallOutlinedIcon from "@mui/icons-material/VideoCallOutlined";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import HistoryIcon from "@mui/icons-material/History";
 import Logo from "../components/Logo";
+import useSeo from "../utils/useSeo";
 import UserMenu from "../components/UserMenu";
 import ThemeSwitcher from "../components/ThemeSwitcher";
 import RejoinButton from "../components/RejoinButton";
@@ -32,6 +33,7 @@ const groupLabel = (dateLike) => {
 export default function History() {
     const { getHistoryOfUser, deleteHistoryItem } = useAuth();
     const navigate = useNavigate();
+    useSeo({ title: "Meeting history – MeetHive", path: "/history", noindex: true });
     const toast = useToast();
     const [meetings, setMeetings] = useState(null);
     const [query, setQuery] = useState("");

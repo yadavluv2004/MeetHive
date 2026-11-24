@@ -1,3 +1,4 @@
+import { memo } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import MicNoneIcon from "@mui/icons-material/MicNone";
 import VideocamOutlinedIcon from "@mui/icons-material/VideocamOutlined";
@@ -7,7 +8,9 @@ import { ThemeOptions } from "../components/ThemeSwitcher";
 
 const supportsSinkId = typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype;
 
-const DeviceSelect = ({ icon: Icon, label, devices, value, onChange, emptyText }) => (
+// memo: the room re-renders every second (clock, speaking indicators). Without this the
+// open <select> menus are re-rendered constantly, which makes picking a device feel laggy.
+const DeviceSelect = memo(({ icon: Icon, label, devices, value, onChange, emptyText }) => (
     <div className="field">
         <label>
             <Icon fontSize="small" /> {label}
@@ -22,11 +25,21 @@ const DeviceSelect = ({ icon: Icon, label, devices, value, onChange, emptyText }
             ))}
         </select>
     </div>
-);
+));
+DeviceSelect.displayName = "DeviceSelect";
+
+// Own component so the ~8 updates/second from the mic level only re-render the meter bar,
+// not the whole settings dialog.
+function MicMeter({ track }) {
+    const level = useAudioLevel(track, true);
+    return (
+        <div className="mic-meter" aria-hidden="true">
+            <div style={{ width: `${Math.round(level * 100)}%` }} />
+        </div>
+    );
+}
 
 export default function DeviceSettings({ media, onClose }) {
-    const level = useAudioLevel(media.audioTrack, true);
-
     return (
         <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
             <div className="modal" role="dialog" aria-modal="true" aria-label="Audio and video settings">
@@ -45,9 +58,7 @@ export default function DeviceSettings({ media, onClose }) {
                         onChange={media.selectAudioDevice}
                         emptyText="No microphone found"
                     />
-                    <div className="mic-meter" aria-hidden="true">
-                        <div style={{ width: `${Math.round(level * 100)}%` }} />
-                    </div>
+                    <MicMeter track={media.audioTrack} />
 
                     {supportsSinkId && (
                         <DeviceSelect

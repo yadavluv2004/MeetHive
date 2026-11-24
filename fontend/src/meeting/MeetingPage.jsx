@@ -11,6 +11,7 @@ import { useToast } from "../contexts/ToastContext";
 import { copyText, isValidMeetingCode, meetingLink } from "../utils/meetingCode";
 import { formatDuration } from "../utils/format";
 import NotFound from "../pages/NotFound";
+import { DEFAULT_TITLE } from "../utils/useSeo";
 import "./meeting.css";
 
 const NAME_KEY = "meethive:display-name";
@@ -38,9 +39,14 @@ export default function MeetingPage() {
     }, [user, name]);
 
     useEffect(() => {
-        document.title = phase === "room" ? `${code} · MeetHive` : "MeetHive - Video meetings for everyone";
+        document.title = phase === "room" ? `${code} · MeetHive` : "Join meeting · MeetHive";
+        // Individual meeting rooms must never be indexed by search engines
+        const robots = document.head.querySelector('meta[name="robots"]');
+        const prev = robots?.getAttribute("content");
+        robots?.setAttribute("content", "noindex, nofollow");
         return () => {
-            document.title = "MeetHive - Video meetings for everyone";
+            document.title = DEFAULT_TITLE;
+            if (robots && prev) robots.setAttribute("content", prev);
         };
     }, [phase, code]);
 

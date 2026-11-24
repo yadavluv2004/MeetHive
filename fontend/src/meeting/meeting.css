@@ -1419,6 +1419,12 @@ kbd {
   box-shadow: var(--shadow-lg);
 }
 
+/* The room is already a fixed full-screen layer; `fixed` attachment here only forces
+   the browser to repaint the whole wallpaper on every video frame / UI change. */
+.room.has-wallpaper {
+  background-attachment: scroll;
+}
+
 .room.has-wallpaper::before {
   content: "";
   position: absolute;
