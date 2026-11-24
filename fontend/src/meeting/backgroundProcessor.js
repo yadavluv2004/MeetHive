@@ -9,9 +9,12 @@ import { renderScene } from "./backgrounds";
  *   is in the background (requestAnimationFrame would pause and freeze your video for others).
  * - One output track is kept for the lifetime of the camera track; changing the effect only
  *   swaps what is drawn, so peers never need a new track.
- * - Optional auto-framing: the person mask gives a bounding box, and every draw reads from a
- *   smoothly eased crop of the camera frame (a digital pan/zoom). With framing off the crop
- *   is the full frame, so the output is identical to having no framing at all.
+ * - Optional auto-framing (like Meet/Zoom "center stage"): a face detector finds the speaker's
+ *   face, and every draw reads from a crop of the camera frame (digital pan/zoom).
+ *   Stability rules: the face box is smoothed; the camera only re-frames when the face has
+ *   clearly moved out of its comfort zone AND stayed there (dwell); each re-frame is a single
+ *   time-based ease-in-out glide. When you sit still the crop doesn't move at all.
+ *   Framing off = full frame, identical to having no framing.
  */
 
 const TASKS_VISION_VERSION = "1.2.3";
@@ -25,42 +28,92 @@ const SEG_H = 144;
 const MAX_W = 1280;
 const FPS = 30;
 
-// Auto-framing tuning (all values are fractions of the camera frame)
-const MIN_CROP = 0.55; // max ~1.8x zoom: more than that gets visibly soft on webcams
-const FRAME_MASK_EVERY = 3; // with no background effect, segment every 3rd frame (~10 fps) to save CPU
-const EASE = 0.07; // per-frame easing toward the goal crop (~1 s to settle)
-const DEADZONE_MOVE = 0.035; // ignore small shifts so the frame doesn't wobble
-const DEADZONE_SIZE = 0.05;
-const LOST_FRAMES = 45; // ~1.5 s without a person -> ease back to the full frame
+const FACE_MODEL_URL =
+    "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite";
+
+// Auto-framing tuning (positions/sizes are fractions of the camera frame, times in ms)
+const MAX_ZOOM = 1.8; // never crop tighter than this: webcams get visibly soft beyond ~2x
+const DETECT_EVERY_MS = 100; // face detection ~10x per second (cheap)
+const FACE_SMOOTHING = 0.25; // exponential smoothing of the detected face box
+const FACE_TO_CROP = 3.4; // crop height = face height x this -> head & shoulders
+const EYE_LINE = 0.42; // face centre sits this far down from the top of the crop
+const COMFORT = 0.12; // the face may drift this much (fraction of the crop) before re-framing
+const ZOOM_TOLERANCE = 0.15; // relative size change needed before re-zooming
+const DWELL_MS = 700; // a change must persist this long before the camera moves
+const MOVE_MS = 900; // duration of one smooth camera glide
+const LOST_MS = 2000; // no face for this long -> glide back to the full frame
 const FULL = Object.freeze({ x: 0, y: 0, w: 1, h: 1 });
+const DET_W = 320;
+const DET_H = 180;
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+const lerp = (a, b, t) => a + (b - a) * t;
 
-let segmenterPromise = null;
-
-const loadSegmenter = () => {
-    if (!segmenterPromise) {
-        segmenterPromise = (async () => {
-            const { FilesetResolver, ImageSegmenter } = await import(/* webpackIgnore: true */ `${CDN}/vision_bundle.mjs`);
-            const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
-            const make = (delegate) =>
-                ImageSegmenter.createFromOptions(fileset, {
-                    baseOptions: { modelAssetPath: MODEL_URL, delegate },
-                    runningMode: "VIDEO",
-                    outputConfidenceMasks: true,
-                    outputCategoryMask: false,
-                });
-            try {
-                return await make("GPU");
-            } catch {
-                return await make("CPU");
-            }
+let visionPromise = null;
+const loadVision = () => {
+    if (!visionPromise) {
+        visionPromise = (async () => {
+            const mod = await import(/* webpackIgnore: true */ `${CDN}/vision_bundle.mjs`);
+            const fileset = await mod.FilesetResolver.forVisionTasks(WASM_URL);
+            return { mod, fileset };
         })().catch((e) => {
-            segmenterPromise = null; // allow a retry later
+            visionPromise = null;
             throw e;
         });
     }
+    return visionPromise;
+};
+
+const withGpuFallback = async (create) => {
+    try {
+        return await create("GPU");
+    } catch {
+        return await create("CPU");
+    }
+};
+
+let segmenterPromise = null;
+const loadSegmenter = () => {
+    if (!segmenterPromise) {
+        segmenterPromise = loadVision()
+            .then(({ mod, fileset }) =>
+                withGpuFallback((delegate) =>
+                    mod.ImageSegmenter.createFromOptions(fileset, {
+                        baseOptions: { modelAssetPath: MODEL_URL, delegate },
+                        runningMode: "VIDEO",
+                        outputConfidenceMasks: true,
+                        outputCategoryMask: false,
+                    })
+                )
+            )
+            .catch((e) => {
+                segmenterPromise = null; // allow a retry later
+                throw e;
+            });
+    }
     return segmenterPromise;
+};
+
+let faceDetectorPromise = null;
+const loadFaceDetector = () => {
+    if (!faceDetectorPromise) {
+        faceDetectorPromise = loadVision()
+            .then(({ mod, fileset }) =>
+                withGpuFallback((delegate) =>
+                    mod.FaceDetector.createFromOptions(fileset, {
+                        baseOptions: { modelAssetPath: FACE_MODEL_URL, delegate },
+                        runningMode: "VIDEO",
+                        minDetectionConfidence: 0.6,
+                    })
+                )
+            )
+            .catch((e) => {
+                faceDetectorPromise = null;
+                throw e;
+            });
+    }
+    return faceDetectorPromise;
 };
 
 /** Start downloading the model early (e.g. when the picker opens). */
@@ -97,7 +150,17 @@ const drawCover = (ctx, img, w, h) => {
 };
 
 export async function createBackgroundProcessor(inputTrack, initialEffect, initialOptions = {}) {
-    const segmenter = await loadSegmenter();
+    // Only wait for the segmentation model if an effect needs it right now; otherwise load lazily.
+    let segmenter = initialEffect?.type !== "none" ? await loadSegmenter() : null;
+    let segmenterLoading = false;
+    const ensureSegmenter = () => {
+        if (segmenter || segmenterLoading) return;
+        segmenterLoading = true;
+        loadSegmenter()
+            .then((sg) => (segmenter = sg))
+            .catch((e) => console.warn("Background effect unavailable", e))
+            .finally(() => (segmenterLoading = false));
+    };
 
     const video = document.createElement("video");
     video.muted = true;
@@ -120,6 +183,7 @@ export async function createBackgroundProcessor(inputTrack, initialEffect, initi
     const [seg, segCtx] = canvas2d(SEG_W, SEG_H);
     const [mask, maskCtx] = canvas2d(SEG_W, SEG_H);
     const [small, smallCtx] = canvas2d(Math.max(1, Math.round(W / 12)), Math.max(1, Math.round(H / 12)));
+    const [det, detCtx] = canvas2d(DET_W, DET_H);
 
     const filterOK = typeof ctx.filter === "string";
     const maskImage = maskCtx.createImageData(SEG_W, SEG_H);
@@ -137,11 +201,29 @@ export async function createBackgroundProcessor(inputTrack, initialEffect, initi
     let stopped = false;
     let lastTs = 0;
 
+    // ---------------- Auto-framing ----------------
     let autoFrame = !!initialOptions.autoFrame;
-    let crop = { ...FULL }; // what is drawn right now
-    let goal = { ...FULL }; // where the crop is easing to
-    let lostFor = 0;
-    let frameNo = 0;
+    let detector = null;
+    let detectorLoading = false;
+    let lastDetectAt = 0;
+    let lastDetectTs = 0;
+    let face = null; // smoothed { cx, cy, h } of the main face
+    let lastFaceAt = 0;
+    let target = { ...FULL }; // where the camera is (or is gliding to)
+    let crop = { ...FULL }; // what is drawn this frame
+    let glide = null; // { from, to, start }
+    let pending = null; // proposed new framing waiting out the dwell time
+    let pendingSince = 0;
+
+    const ensureDetector = () => {
+        if (detector || detectorLoading) return;
+        detectorLoading = true;
+        loadFaceDetector()
+            .then((d) => (detector = d))
+            .catch((e) => console.warn("Auto-framing unavailable", e)) // framing just stays off
+            .finally(() => (detectorLoading = false));
+    };
+    if (autoFrame) ensureDetector();
 
     /** Draw the (cropped) camera frame into a destination rect. Full crop == plain drawImage. */
     const drawVideo = (c, dx, dy, dw, dh) => {
@@ -150,98 +232,93 @@ export async function createBackgroundProcessor(inputTrack, initialEffect, initi
         c.drawImage(video, crop.x * vw, crop.y * vh, crop.w * vw, crop.h * vh, dx, dy, dw, dh);
     };
 
-    /** Person bounding box from the smoothed mask, or null when nobody is in frame. */
-    const personBox = () => {
-        const cols = new Float32Array(SEG_W);
-        let top = -1;
-        let bottom = -1;
-        let total = 0;
-        for (let y = 0; y < SEG_H; y++) {
-            let rowCount = 0;
-            const row = y * SEG_W;
-            for (let x = 0; x < SEG_W; x++) {
-                if (prevAlpha[row + x] > 0.5) {
-                    cols[x]++;
-                    rowCount++;
-                }
-            }
-            if (rowCount >= 3) {
-                if (top < 0) top = y;
-                bottom = y;
-            }
-            total += rowCount;
-        }
-        if (top < 0 || total < SEG_W * SEG_H * 0.01) return null; // <1% of the frame: treat as nobody
-        // horizontal extent by mass percentiles, so a stray hand/edge pixel doesn't widen the box
-        let acc = 0;
-        let left = 0;
-        let right = SEG_W - 1;
-        for (let x = 0; x < SEG_W; x++) {
-            acc += cols[x];
-            if (acc >= total * 0.03) {
-                left = x;
-                break;
-            }
-        }
-        acc = 0;
-        for (let x = SEG_W - 1; x >= 0; x--) {
-            acc += cols[x];
-            if (acc >= total * 0.03) {
-                right = x;
-                break;
-            }
-        }
-        return { x0: left / SEG_W, x1: (right + 1) / SEG_W, y0: top / SEG_H, y1: (bottom + 1) / SEG_H };
+    const moveTo = (to, now) => {
+        target = { ...to };
+        glide = { from: { ...crop }, to: target, start: now };
+        pending = null;
     };
 
-    /** Head-and-shoulders framing around the person, keeping the camera's aspect ratio. */
-    const framingFor = (b) => {
-        const bw = b.x1 - b.x0;
-        // only look at the upper body: roughly one shoulder-width below the top of the head
-        // (bw is a fraction of the width; convert that distance into a fraction of the height)
-        const bh = Math.min(b.y1, b.y0 + bw * 0.9 * (W / H)) - b.y0;
-        const size = clamp(Math.max(bw * 1.75, bh * 1.25), MIN_CROP, 1);
-        const cx = (b.x0 + b.x1) / 2;
+    /** Head-and-shoulders framing for a face; keeps the camera's aspect ratio. */
+    const framingFor = (f) => {
+        const size = clamp(f.h * FACE_TO_CROP, 1 / MAX_ZOOM, 1);
         return {
-            x: clamp(cx - size / 2, 0, 1 - size),
-            y: clamp(b.y0 - size * 0.14, 0, 1 - size), // a little headroom above the head
+            x: clamp(f.cx - size / 2, 0, 1 - size),
+            y: clamp(f.cy - size * EYE_LINE, 0, 1 - size),
             w: size,
             h: size,
         };
     };
 
-    const updateGoal = (maskFresh) => {
-        if (!autoFrame) {
-            goal = { ...FULL };
-            lostFor = 0;
-            return;
+    const differsEnough = (a, b) =>
+        Math.abs(a.x + a.w / 2 - (b.x + b.w / 2)) > COMFORT * b.w ||
+        Math.abs(a.y + a.h / 2 - (b.y + b.h / 2)) > COMFORT * b.h ||
+        Math.abs(a.w - b.w) > ZOOM_TOLERANCE * b.w;
+
+    const detectFace = (now) => {
+        if (!detector || now - lastDetectAt < DETECT_EVERY_MS) return;
+        lastDetectAt = now;
+        detCtx.drawImage(video, 0, 0, DET_W, DET_H); // always the FULL frame: no feedback from the crop
+        const ts = Math.max(now, lastDetectTs + 1);
+        lastDetectTs = ts;
+        const res = detector.detectForVideo(det, ts);
+        let best = null;
+        for (const d of res?.detections || []) {
+            const bb = d.boundingBox;
+            if (bb && (!best || bb.width * bb.height > best.width * best.height)) best = bb;
         }
-        if (!maskFresh) return;
-        const box = personBox();
-        if (!box) {
-            if (++lostFor >= LOST_FRAMES / (effect.type === "none" ? FRAME_MASK_EVERY : 1)) goal = { ...FULL };
-            return;
-        }
-        lostFor = 0;
-        const next = framingFor(box);
-        const moved =
-            Math.abs(next.x + next.w / 2 - (goal.x + goal.w / 2)) > DEADZONE_MOVE ||
-            Math.abs(next.y - goal.y) > DEADZONE_MOVE ||
-            Math.abs(next.w - goal.w) > DEADZONE_SIZE;
-        if (moved) goal = next;
+        if (!best) return;
+        const m = {
+            cx: (best.originX + best.width / 2) / DET_W,
+            cy: (best.originY + best.height / 2) / DET_H,
+            h: best.height / DET_H,
+        };
+        face = face
+            ? {
+                  cx: lerp(face.cx, m.cx, FACE_SMOOTHING),
+                  cy: lerp(face.cy, m.cy, FACE_SMOOTHING),
+                  h: lerp(face.h, m.h, FACE_SMOOTHING),
+              }
+            : m;
+        lastFaceAt = now;
     };
 
-    const easeCrop = () => {
-        const k = EASE;
-        const w = crop.w + (goal.w - crop.w) * k;
-        let x = crop.x + (goal.x - crop.x) * k;
-        let y = crop.y + (goal.y - crop.y) * k;
-        x = clamp(x, 0, 1 - w);
-        y = clamp(y, 0, 1 - w);
-        crop = { x, y, w, h: w };
-        // snap when close, so "framing off" ends at exactly the untouched full frame
-        if (Math.abs(crop.w - goal.w) < 0.002 && Math.abs(crop.x - goal.x) < 0.002 && Math.abs(crop.y - goal.y) < 0.002) {
-            crop = { ...goal };
+    const updateFraming = (now) => {
+        if (!autoFrame) {
+            face = null;
+            pending = null;
+            if (target.w !== 1 && !(glide && glide.to.w === 1)) moveTo(FULL, now);
+        } else {
+            try {
+                detectFace(now);
+            } catch {
+                /* a failed detection just keeps the current framing */
+            }
+            if (face && now - lastFaceAt > LOST_MS) face = null;
+            const desired = face ? framingFor(face) : FULL;
+            if (!differsEnough(desired, target)) {
+                pending = null; // still inside the comfort zone: the camera stays perfectly still
+            } else if (!pending) {
+                pending = desired;
+                pendingSince = now;
+            } else {
+                pending = desired; // follow the latest proposal while waiting
+                if (now - pendingSince >= DWELL_MS) moveTo(pending, now);
+            }
+        }
+
+        if (glide) {
+            const t = clamp((now - glide.start) / MOVE_MS, 0, 1);
+            const e = easeInOutCubic(t);
+            crop = {
+                x: lerp(glide.from.x, glide.to.x, e),
+                y: lerp(glide.from.y, glide.to.y, e),
+                w: lerp(glide.from.w, glide.to.w, e),
+                h: lerp(glide.from.h, glide.to.h, e),
+            };
+            if (t >= 1) {
+                crop = { ...glide.to };
+                glide = null;
+            }
         }
     };
 
@@ -309,22 +386,25 @@ export async function createBackgroundProcessor(inputTrack, initialEffect, initi
         if (stopped || busy || video.readyState < 2) return;
         busy = true;
         try {
+            const now = performance.now();
             const hasEffect = effect.type !== "none";
-            // the mask is needed for the effect, or (less often) to find the person for framing
-            let maskFresh = false;
-            if (hasEffect || (autoFrame && frameNo++ % FRAME_MASK_EVERY === 0)) {
-                try {
-                    updateMask();
-                    maskFresh = true;
-                } catch (e) {
-                    // keep last mask on a transient failure
-                }
-            }
+
             try {
-                updateGoal(maskFresh && hasMask);
-                easeCrop();
-            } catch (e) {
+                updateFraming(now);
+            } catch {
                 crop = { ...FULL }; // framing must never break the video
+                glide = null;
+            }
+
+            if (hasEffect) {
+                if (!segmenter) ensureSegmenter();
+                else {
+                    try {
+                        updateMask();
+                    } catch {
+                        // keep last mask on a transient failure
+                    }
+                }
             }
 
             if (!hasEffect || !hasMask) {
@@ -360,10 +440,14 @@ export async function createBackgroundProcessor(inputTrack, initialEffect, initi
         setEffect(next) {
             if (!next || next === effect) return;
             effect = next;
+            if (next.type !== "none") ensureSegmenter();
             loadEffectAssets(next);
         },
         setOptions(opts = {}) {
-            if ("autoFrame" in opts) autoFrame = !!opts.autoFrame; // turning off eases back to the full frame
+            if ("autoFrame" in opts) {
+                autoFrame = !!opts.autoFrame; // turning off glides back to the full frame
+                if (autoFrame) ensureDetector();
+            }
         },
         stop() {
             stopped = true;
