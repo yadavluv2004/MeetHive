@@ -1,170 +1,194 @@
-import * as React from 'react';
-import Avatar from '@mui/material/Avatar';
-import Button from '@mui/material/Button';
-import CssBaseline from '@mui/material/CssBaseline';
-import TextField from '@mui/material/TextField';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Checkbox from '@mui/material/Checkbox';
-import Link from '@mui/material/Link';
-import Paper from '@mui/material/Paper';
-import Box from '@mui/material/Box';
-import Grid from '@mui/material/Grid';
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
-import Typography from '@mui/material/Typography';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
-// import { AuthContext } from '../contexts/AuthContext';
-import { Snackbar } from '@mui/material';
-import { AuthContext } from '../contexts/AuthContext';
+import { useEffect, useState } from "react";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
+import VisibilityOffOutlinedIcon from "@mui/icons-material/VisibilityOffOutlined";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import Logo from "../components/Logo";
+import ThemeSwitcher from "../components/ThemeSwitcher";
+import { useAuth } from "../contexts/AuthContext";
+import { errorMessage } from "../api/client";
+import "../App.css";
 
-
-
-
-const defaultTheme = createTheme();
+const safeNext = (next) => (next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
 
 export default function Authentication() {
-    const [username,setUsername]=React.useState();
-    const [password,setPassword]=React.useState();
-    const [name,setName]=React.useState();
-    const [error,seterror]=React.useState();
-    const [message,setMessages]=React.useState();
-   const{handleRegister,handleLogin} =React.useContext(AuthContext);
+    const { handleLogin, handleRegister, isAuthenticated } = useAuth();
+    const navigate = useNavigate();
+    const [params] = useSearchParams();
+    const next = safeNext(params.get("next"));
 
-    const[formState,setFormState]=React.useState(0);
+    const [mode, setMode] = useState(params.get("mode") === "signup" ? "signup" : "signin");
+    const [name, setName] = useState("");
+    const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
+    const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [touched, setTouched] = useState({});
 
-    const[open,setOpen]=React.useState(false);
+    useEffect(() => {
+        setError("");
+        setTouched({});
+    }, [mode]);
 
-let handleAuth = async () => {
-    try {
-if(formState === 0){
-    let result=await handleLogin(username,password)
-}
+    if (isAuthenticated && !loading) return <Navigate to={next} replace />;
 
-        if (formState === 1) {
-            let result = await handleRegister(name, username, password);
-            setMessages(result);
-            setOpen(true);
-            setUsername("");
-            seterror("");
-            setFormState(0);
-            setPassword("");
+    const isSignup = mode === "signup";
+    const errors = {
+        name: isSignup && !name.trim() ? "Please enter your name" : "",
+        username: !username.trim()
+            ? "Please enter a username"
+            : isSignup && !/^[a-zA-Z0-9_.-]{3,30}$/.test(username.trim())
+            ? "3-30 characters: letters, numbers, . _ or -"
+            : "",
+        password: !password
+            ? "Please enter a password"
+            : isSignup && password.length < 8
+            ? "Use at least 8 characters"
+            : "",
+    };
+    const hasErrors = Object.values(errors).some(Boolean);
+
+    const submit = async (e) => {
+        e.preventDefault();
+        setTouched({ name: true, username: true, password: true });
+        if (hasErrors) return;
+
+        setLoading(true);
+        setError("");
+        setSuccess("");
+        try {
+            if (isSignup) {
+                const msg = await handleRegister(name.trim(), username.trim(), password);
+                setSuccess(msg || "Account created! Please sign in.");
+                setPassword("");
+                setMode("signin");
+            } else {
+                await handleLogin(username.trim(), password);
+                navigate(next, { replace: true });
+            }
+        } catch (err) {
+            setError(errorMessage(err));
+        } finally {
+            setLoading(false);
         }
-       
-    } catch (err) {
-        if (err.response && err.response.status === 409) {
-         
-            seterror("User already exists. Try logging in.");
-        } else {
-            
-            seterror("Something went wrong. Please try again.");
-        }
-    }
-};
+    };
+
+    const fieldError = (key) => touched[key] && errors[key];
 
     return (
-        <ThemeProvider theme={defaultTheme}>
-            <Grid container component="main" sx={{ height: '100vh' }}>
-                <CssBaseline />
-                <Grid
-                    item
-                    xs={false}
-                    sm={4}
-                    md={7}
-                    sx={{
-                        backgroundImage: 'url(https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1350&q=80)',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundColor: (t) =>
-                            t.palette.mode === 'light' ? t.palette.grey[50] : t.palette.grey[900],
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                    }}
-                />
-                <Grid item xs={12} sm={8} md={5} component={Paper} elevation={6} square>
-                    <Box
-                        sx={{
-                            my: 8,
-                            mx: 4,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                        }}
-                    >
-                        <Avatar sx={{ m: 1, bgcolor: 'secondary.main' }}>
-                            <LockOutlinedIcon />
-                        </Avatar>
+        <div className="auth-page">
+            <aside className="auth-aside">
+                <Logo />
+                <div className="auth-aside-copy">
+                    <h2>Connect with anyone, anywhere.</h2>
+                    <ul>
+                        <li><CheckCircleOutlineIcon /> HD video calls across any network</li>
+                        <li><CheckCircleOutlineIcon /> Screen sharing, chat & reactions</li>
+                        <li><CheckCircleOutlineIcon /> Your meeting history in one place</li>
+                    </ul>
+                </div>
+                <div className="auth-aside-foot">Free forever for personal use.</div>
+            </aside>
 
+            <main className="auth-main">
+                <div className="auth-theme"><ThemeSwitcher /></div>
+                <div className="auth-card">
+                    <div className="auth-mobile-logo"><Logo /></div>
+                    <h1>{isSignup ? "Create your account" : "Welcome back"}</h1>
+                    <p className="auth-sub">
+                        {isSignup ? "Start hosting meetings in seconds." : "Sign in to start or join meetings."}
+                    </p>
 
-                        <div>
-                            <Button variant={formState === 0 ? "contained" : ""} onClick={() => { setFormState(0) }}>
-                                Sign In
-                            </Button>
-                            <Button variant={formState === 1 ? "contained" : ""} onClick={() => { setFormState(1) }}>
-                                Sign Up
-                            </Button>
+                    <div className="segmented" role="tablist">
+                        <button role="tab" aria-selected={!isSignup} className={!isSignup ? "active" : ""} onClick={() => setMode("signin")}>
+                            Sign in
+                        </button>
+                        <button role="tab" aria-selected={isSignup} className={isSignup ? "active" : ""} onClick={() => setMode("signup")}>
+                            Sign up
+                        </button>
+                    </div>
+
+                    {success && <div className="alert alert-success">{success}</div>}
+                    {error && <div className="alert alert-error">{error}</div>}
+
+                    <form onSubmit={submit} noValidate>
+                        {isSignup && (
+                            <div className="field">
+                                <label htmlFor="name">Full name</label>
+                                <input
+                                    id="name"
+                                    className={`input ${fieldError("name") ? "has-error" : ""}`}
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    onBlur={() => setTouched((t) => ({ ...t, name: true }))}
+                                    autoComplete="name"
+                                    autoFocus
+                                    maxLength={60}
+                                />
+                                {fieldError("name") && <span className="field-error">{errors.name}</span>}
+                            </div>
+                        )}
+
+                        <div className="field">
+                            <label htmlFor="username">Username</label>
+                            <input
+                                id="username"
+                                className={`input ${fieldError("username") ? "has-error" : ""}`}
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                onBlur={() => setTouched((t) => ({ ...t, username: true }))}
+                                autoComplete="username"
+                                autoCapitalize="none"
+                                autoFocus={!isSignup}
+                                maxLength={30}
+                            />
+                            {fieldError("username") && <span className="field-error">{errors.username}</span>}
                         </div>
 
-                        <Box component="form" noValidate sx={{ mt: 1 }}>
-                            {formState === 1 ? <TextField
-                                margin="normal"
-                                required
-                                fullWidth
-                                id="username"
-                                label="Full Name"
-                                name="username"
-                                value={name}
-                                autoFocus
-                                onChange={(e) => setName(e.target.value)}
-                            /> : <></>}
+                        <div className="field">
+                            <label htmlFor="password">Password</label>
+                            <div className={`input-icon ${fieldError("password") ? "has-error" : ""}`}>
+                                <input
+                                    id="password"
+                                    type={showPassword ? "text" : "password"}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    onBlur={() => setTouched((t) => ({ ...t, password: true }))}
+                                    autoComplete={isSignup ? "new-password" : "current-password"}
+                                    maxLength={128}
+                                />
+                                <button
+                                    type="button"
+                                    className="icon-btn"
+                                    style={{ width: 32, height: 32 }}
+                                    onClick={() => setShowPassword((s) => !s)}
+                                    aria-label={showPassword ? "Hide password" : "Show password"}
+                                >
+                                    {showPassword ? <VisibilityOffOutlinedIcon fontSize="small" /> : <VisibilityOutlinedIcon fontSize="small" />}
+                                </button>
+                            </div>
+                            {fieldError("password") && <span className="field-error">{errors.password}</span>}
+                        </div>
 
-                            <TextField
-                                margin="normal"
-                                required
-                                fullWidth
-                                id="username"
-                                label="Username"
-                                name="username"
-                                value={username}
-                                autoFocus
-                                onChange={(e) => setUsername(e.target.value)}
+                        <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={loading}>
+                            {loading && <span className="spinner spinner-sm" />}
+                            {isSignup ? "Create account" : "Sign in"}
+                        </button>
+                    </form>
 
-                            />
-                            <TextField
-                                margin="normal"
-                                required
-                                fullWidth
-                                name="password"
-                                label="Password"
-                                value={password}
-                                type="password"
-                                onChange={(e) => setPassword(e.target.value)}
-
-                                id="password"
-                            />
-
-                            <p style={{ color: "red" }}>{error}</p>
-
-                            <Button
-                                type="button"
-                                fullWidth
-                                variant="contained"
-                                sx={{ mt: 3, mb: 2 }}
-                                onClick={handleAuth}
-                            >
-                               {formState === 0 ? "Login In":  "Register" } 
-                            Sign in
-                            </Button>
-
-                        </Box>
-                    </Box>
-                </Grid>
-            </Grid>
-
-            <Snackbar
-
-                open={open}
-                autoHideDuration={4000}
-                message={message}
-            />
-
-        </ThemeProvider>
+                    <p className="auth-switch">
+                        {isSignup ? "Already have an account?" : "New to MeetHive?"}{" "}
+                        <button onClick={() => setMode(isSignup ? "signin" : "signup")}>
+                            {isSignup ? "Sign in" : "Create an account"}
+                        </button>
+                    </p>
+                    <p className="auth-switch">
+                        Just joining a call? <button onClick={() => navigate("/")}>Join as guest</button>
+                    </p>
+                </div>
+            </main>
+        </div>
     );
 }

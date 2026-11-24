@@ -1,0 +1,46 @@
+# Render Blueprint - deploys backend (web service) + frontend (static site).
+# Dashboard > New > Blueprint > pick this repo. Secrets marked `sync: false` are entered in the dashboard.
+services:
+  - type: web
+    name: meethivebackend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://meethivefrontend.onrender.com
+      # TURN for cross-network calls (Metered static credentials; see backend/.env.example for other options)
+      - key: TURN_URLS
+        value: turn:global.relay.metered.ca:80,turn:global.relay.metered.ca:80?transport=tcp,turn:global.relay.metered.ca:443,turns:global.relay.metered.ca:443?transport=tcp
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
+
+  - type: web
+    name: meethivefrontend
+    runtime: static
+    rootDir: fontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_SERVER_URL
+        value: https://meethivebackend.onrender.com
+    # SPA: send every route (e.g. /meet/abc-defg-hij) to index.html
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /static/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable

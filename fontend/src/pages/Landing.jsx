@@ -1,208 +1,136 @@
-import React, { useEffect, useState } from 'react';
+import { useNavigate } from "react-router-dom";
+import VideocamOutlinedIcon from "@mui/icons-material/VideocamOutlined";
+import PublicIcon from "@mui/icons-material/Public";
+import ScreenShareOutlinedIcon from "@mui/icons-material/ScreenShareOutlined";
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import DevicesIcon from "@mui/icons-material/Devices";
+import MicOffIcon from "@mui/icons-material/MicOff";
+import Logo from "../components/Logo";
+import JoinForm from "../components/JoinForm";
+import UserMenu from "../components/UserMenu";
+import ThemeSwitcher from "../components/ThemeSwitcher";
+import { useAuth } from "../contexts/AuthContext";
+import { generateMeetingCode } from "../utils/meetingCode";
 import "../App.css";
-import { Link, useNavigate } from 'react-router-dom';
 
+const FEATURES = [
+    { icon: VideocamOutlinedIcon, title: "HD video & audio", text: "Crisp video with adaptive quality that adjusts to every participant's connection." },
+    { icon: PublicIcon, title: "Works on any network", text: "Wi-Fi, mobile data or office firewalls — TURN relays keep everyone connected." },
+    { icon: ScreenShareOutlinedIcon, title: "Screen sharing", text: "Present your screen, a window or a tab with one click. No plugins needed." },
+    { icon: ChatBubbleOutlineIcon, title: "In-call chat & reactions", text: "Send messages, raise your hand and react without interrupting the speaker." },
+    { icon: LockOutlinedIcon, title: "Private by design", text: "Media flows encrypted end-to-end between browsers with DTLS-SRTP." },
+    { icon: DevicesIcon, title: "Any device", text: "Join from desktop, tablet or phone right in the browser — nothing to install." },
+];
+
+const MOCK_TILES = [
+    { name: "Aisha", color: "#7B61FF" },
+    { name: "Rahul", color: "#0B8043", muted: true },
+    { name: "Mei", color: "#E8710A" },
+    { name: "You", color: "#1A73E8", speaking: true },
+];
 
 export default function LandingPage() {
-  const router = useNavigate();
+    const navigate = useNavigate();
+    const { isAuthenticated } = useAuth();
 
-  const slideshowImages = [
-    "/mobile.png",
-    "/mobile2.png",
-    "/mobile3.png"
-  ];
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+    const startMeeting = () => {
+        if (isAuthenticated) navigate(`/meet/${generateMeetingCode()}`);
+        else navigate("/auth?next=/home");
+    };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentIndex((prevIndex) => (prevIndex + 1) % slideshowImages.length);
-    }, 2500);
+    return (
+        <div className="landing">
+            <header className="site-nav">
+                <Logo />
+                <nav className="site-nav-links">
+                    <ThemeSwitcher />
+                    {isAuthenticated ? (
+                        <>
+                            <button className="btn btn-ghost" onClick={() => navigate("/home")}>Dashboard</button>
+                            <UserMenu />
+                        </>
+                    ) : (
+                        <>
+                            <button className="btn btn-ghost hide-sm" onClick={() => navigate("/auth")}>Sign in</button>
+                            <button className="btn btn-dark" onClick={() => navigate("/auth?mode=signup")}>Get started</button>
+                        </>
+                    )}
+                </nav>
+            </header>
 
-    return () => clearInterval(interval);
-  }, []);
+            <main>
+                <section className="hero">
+                    <div className="hero-copy">
+                        <span className="eyebrow">Free • Secure • No downloads</span>
+                        <h1>
+                            Meet face to face,<br />
+                            <span className="gradient-text">from anywhere.</span>
+                        </h1>
+                        <p className="lead">
+                            MeetHive brings your team, class or family together with HD video calls, screen sharing
+                            and chat — right in the browser, across any network.
+                        </p>
+                        <div className="hero-actions">
+                            <button className="btn btn-primary btn-lg" onClick={startMeeting}>
+                                <VideocamOutlinedIcon /> New meeting
+                            </button>
+                            <div className="hero-join">
+                                <JoinForm />
+                            </div>
+                        </div>
+                        <p className="hero-note">Guests can join with just a code — no account needed.</p>
+                    </div>
 
-  return (
-    <div className='landingPageContainer'>
-      <style>
-        {`
-          .login-text {
-            font-weight: bold;
-            display: inline-block;
-            border-bottom: 2px solid transparent;
-            transition: border-bottom 0.3s ease;
-            margin-right: 20px;
-          }
+                    <div className="hero-visual" aria-hidden="true">
+                        <div className="mock-window">
+                            <div className="mock-bar">
+                                <span /><span /><span />
+                                <div className="mock-code">abc-defg-hij</div>
+                            </div>
+                            <div className="mock-grid">
+                                {MOCK_TILES.map((t) => (
+                                    <div key={t.name} className={`mock-tile ${t.speaking ? "speaking" : ""}`}>
+                                        <div className="mock-avatar" style={{ background: t.color }}>{t.name[0]}</div>
+                                        <div className="mock-name">
+                                            {t.muted && <MicOffIcon style={{ fontSize: 14 }} />} {t.name}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mock-controls">
+                                <span /><span /><span className="end" /><span /><span />
+                            </div>
+                        </div>
+                        <div className="float-card float-1">🎉 Mei reacted</div>
+                        <div className="float-card float-2">✋ Rahul raised a hand</div>
+                    </div>
+                </section>
 
-          .login-text:hover {
-            border-bottom: 2px solid orange;
-            color: orange;
-            cursor: pointer;
-            font-size: 20px;
-            transition:0.4s ease-in-out;
-          }
+                <section className="features">
+                    <h2>Everything you need for great meetings</h2>
+                    <div className="feature-grid">
+                        {FEATURES.map(({ icon: Icon, title, text }) => (
+                            <div className="feature-card" key={title}>
+                                <div className="feature-icon"><Icon /></div>
+                                <h3>{title}</h3>
+                                <p>{text}</p>
+                            </div>
+                        ))}
+                    </div>
+                </section>
 
-          .get-started-btn {
-            display: inline-block;
-            padding: 12px 24px;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            text-align: center;
-            border: 2px solid transparent;
-            margin-top: 20px;
-            background-color: white;
-          }
+                <section className="cta-band">
+                    <h2>Ready to start your first meeting?</h2>
+                    <p>Create a free account in seconds and invite anyone with a link.</p>
+                    <button className="btn btn-primary btn-lg" onClick={startMeeting}>Start for free</button>
+                </section>
+            </main>
 
-          .get-started-btn a {
-            text-decoration: none;
-            color: #D2042D;
-            font-weight: bold;
-            display: inline-block;
-            width: 100%;
-          }
-
-          .get-started-btn:hover {
-            background-color: white;
-            border: 2px solid #D2042D;
-          }
-
-          .get-started-btn:hover a {
-            color: #ff9839;
-          }
-
-          .slideshow-img {
-            width: 100%;
-            max-width: 400px;
-            transition: opacity 0.5s ease-in-out;
-          }
-
-          h2:hover {
-            font-size: 80px;
-            transition: 0.3s ease-in-out;
-          }
-
-          .navItems-desktop {
-            display: flex;
-            gap: 20px;
-          }
-
-          .dropdownMenu {
-            display: none;
-          }
-
-          @media (max-width: 768px) {
-            .slideshow-img {
-              display: none;
-            }
-
-            .landingMainContainer h1 {
-              font-size: 28px !important;
-              text-align: center;
-            }
-
-            .landingMainContainer p {
-              font-size: 20px !important;
-              text-align: center;
-            }
-
-            .navItems-desktop {
-              display: none !important;
-            }
-
-            .dropdownMenu {
-              display: block !important;
-              position: relative;
-            }
-          }
-
-          .menu-toggle {
-            background-color: orange;
-            color: white;
-            padding: 10px 20px;
-            font-weight: bold;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-          }
-
-          .dropdown-content {
-            position: absolute;
-            top: 45px;
-            right: 0;
-            background-color: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            padding: 10px;
-            z-index: 100;
-          }
-
-          .dropdown-content .login-text {
-            display: block;
-            margin: 10px 0;
-            font-size: 16px;
-            color: black;
-            cursor: pointer;
-          }
-        `}
-      </style>
-
-      {/* Navigation */}
-      <nav>
-        <div className='navHeader'>
-          <h2 style={{ cursor: "pointer", fontSize: "40px", fontWeight: "bold" }}>
-            <span style={{ color: "orange" }}>Meet</span><span>Hive</span>
-          </h2>
+            <footer className="site-footer">
+                <Logo size="sm" />
+                <span>© {new Date().getFullYear()} MeetHive. Built with WebRTC.</span>
+            </footer>
         </div>
-
-        <div className='navlist'>
-          {/* Desktop Menu */}
-          <div className='navItems-desktop'>
-            <p className="login-text" onClick={() => router("/aljk23")}>Join as Guest</p>
-            <p className="login-text" onClick={() => router("/auth")}>Register</p>
-            <p className="login-text" onClick={() => router("/auth")}>Login</p>
-          </div>
-
-          {/* Mobile Dropdown Menu */}
-          <div className="dropdownMenu">
-            <button className="menu-toggle" onClick={() => setDropdownOpen(!dropdownOpen)}>☰ Menu</button>
-            {dropdownOpen && (
-              <div className="dropdown-content">
-                <p className="login-text" onClick={() => { router("/aljk23"); setDropdownOpen(false); }}>Join as Guest</p>
-                <p className="login-text" onClick={() => { router("/auth"); setDropdownOpen(false); }}>Register</p>
-                <p className="login-text" onClick={() => { router("/auth"); setDropdownOpen(false); }}>Login</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <div className="landingMainContainer">
-        <div>
-          <h1 style={{ fontSize: "50px", marginBottom: "10px" }}>
-            <span style={{ color: "#FF9839" }} className="bold">Call</span> .
-            <span style={{ color: "#D2042D" }} className="bold">Connect</span>. 
-            <span style={{ color: "#5D3FD3" }} className="bold">Cherish</span> with MeetHive
-          </h1>
-          <p style={{ fontSize: "40px" }}>Feel Closer, Even Miles Apart</p>
-          <div className="get-started-btn" role='button'>
-            <Link to="/auth">Get Started</Link>
-          </div>
-        </div>
-
-        <div className='img-div'>
-          <img
-            src={slideshowImages[currentIndex]}
-            alt="Mobile preview"
-            className="slideshow-img"
-          />
-        </div>
-       
-      </div>
-
-    </div>
-  );
+    );
 }
-
-

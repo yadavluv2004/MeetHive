@@ -1,77 +1,81 @@
 # 🐝 MeetHive – Real-Time Video Calling Platform
 
-Live Demo: 👉 [https://meethivefrontend.onrender.com](https://meethivefrontend.onrender.com)
+Live demo: 👉 [https://meethivefrontend.onrender.com](https://meethivefrontend.onrender.com)
 
-MeetHive is a real-time video conferencing platform built with **WebRTC**, allowing seamless video/audio communication between users. Designed for productivity, MeetHive supports 100+ users per session with secure login, dynamic meeting rooms, and chat support.
+MeetHive is a browser-based video meeting app built with **React**, **WebRTC**, **Socket.IO**, **Express** and **MongoDB**. Guests can join with just a link; signed-in users get a dashboard and meeting history.
 
----
+## ✨ Features
 
-## 🎥 Overview
+- HD group video calls (peer-to-peer mesh, up to 12 people per room by default)
+- **Works across networks**: Wi-Fi, mobile data, corporate NATs, via STUN + TURN relays
+- Pre-join lobby with camera preview, mic level meter and device selection (mic / camera / speaker)
+- Screen sharing, raise hand, emoji reactions, in-call chat with unread badges
+- Adaptive grid layout, active-speaker highlight, pin participant, spotlight for presenters
+- Automatic ICE restart on network change and Socket.IO reconnect handling
+- Keyboard shortcuts: `Ctrl+D` mic, `Ctrl+E` camera
+- Accounts, meeting history (search, rejoin, copy link, delete)
+- Responsive UI for desktop and mobile
 
-MeetHive empowers users with a smooth, scalable, and secure virtual meeting experience — ideal for teams, classrooms, and communities.
+## 🛠️ Tech stack
 
----
+| Layer     | Tech                                                         |
+|-----------|--------------------------------------------------------------|
+| Frontend  | React 19, React Router 7, MUI icons, socket.io-client        |
+| Backend   | Node.js, Express 5, Socket.IO 4, Mongoose                    |
+| Media     | WebRTC (STUN/TURN), `replaceTrack` for seamless track swaps  |
+| Security  | bcrypt-hashed passwords, hashed expiring session tokens, Helmet, rate limiting, CORS allow-list |
 
-## 🚀 Features
+## 🌐 Why TURN is required for calls across networks
 
-- 🔐 **User Authentication** via session-based login
-- 🧑‍🤝‍🧑 **Group Video Calls** with support for 100+ participants
-- 🎤 **Real-Time Communication** using **WebRTC**
-- 💬 **In-Call Messaging Chat**
-- 📜 **Meeting History** stored securely with **MongoDB**
-- ⚡ **Dynamic Room Generation** for instant meetings
-- 🧭 **Simple & Responsive UI** with **EJS** templating
+WebRTC tries to connect browsers directly. On the same Wi-Fi that's easy. Across different networks, especially mobile carriers and offices that use symmetric NAT, a direct path often can't be found, so media has to go through a **TURN relay**. Without one, calls connect on the same Wi-Fi and fail elsewhere.
 
----
+The backend serves ICE servers from `GET /api/v1/ice-servers`, so TURN credentials never live in the frontend bundle. Configure **one** option in `backend/.env`:
 
-## 🛠️ Tech Stack
+| Option | Env vars | Notes |
+|---|---|---|
+| **Metered.ca** (easiest) | `METERED_DOMAIN`, `METERED_API_KEY` | Has a free tier. Create an app at dashboard.metered.ca |
+| Any provider, static creds | `TURN_URLS`, `TURN_USERNAME`, `TURN_CREDENTIAL` | Twilio, Xirsys, ExpressTURN, etc. |
+| Self-hosted coturn | `TURN_URLS`, `TURN_SECRET` | Uses time-limited HMAC credentials (`use-auth-secret`) |
 
-| Technology     | Role                                  |
-|----------------|----------------------------------------|
-| **JavaScript** | Frontend scripting & WebRTC logic      |
-| **Node.js**    | Backend runtime                        |
-| **Express.js** | Web server and routing                 |
-| **MongoDB**    | User data & meeting logs               |
-| **EJS**        | Templating engine for views            |
-| **Socket.io**  | Real-time signaling                    |
-| **WebRTC**     | Peer-to-peer video & audio connection  |
-| **CSS**        | Styling and layout                     |
+Include a `turns:...:443?transport=tcp` URL so calls also work behind strict firewalls.
 
----
-
-## 🧩 Architecture Overview
-
-1. **User Authentication** – Managed via sessions on Express server.
-2. **Room Creation** – Users can generate or join dynamic rooms.
-3. **Video/Audio Streaming** – Enabled through peer-to-peer WebRTC.
-4. **Real-Time Messaging** – Socket.io supports in-call chat.
-5. **Data Storage** – MongoDB stores user credentials and meeting history.
-
----
-
-## 📷 UI Preview
-
-![MeetHive UI Screenshot](https://raw.githubusercontent.com/yadavluv2004/fontend/public/WhatsApp Image 2025-07-28 at 22.48.14_a6c44e02.jpg)
-
----
-
-## 📦 Installation (Local Setup)
+## 📦 Local setup
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/your-username/meethive.git
-cd meethive
-
-# 2. Install dependencies
+# Backend
+cd backend
+cp .env.example .env      # fill in MONGO_URI (and TURN settings)
 npm install
+npm run dev               # http://localhost:8000
 
-# 3. Setup environment variables
-# Create a .env file and add:
-# SESSION_SECRET=yourSecretKey
-# MONGO_URI=yourMongoDBConnectionString
+# Frontend (new terminal)
+cd fontend
+cp .env.example .env      # optional
+npm install
+npm start                 # http://localhost:3000
+```
 
-# 4. Start the development server
-npm start
+> Browsers only allow camera/mic on **HTTPS** or `localhost`. To test from another device, use the deployed HTTPS site or a tunnel (e.g. `ngrok http 3000`), not `http://192.168.x.x`.
 
-# 5. Open in browser
-http://localhost:3000
+## 🚀 Deploying (Render)
+
+`render.yaml` defines both services. In Render: **New → Blueprint**, select the repo, then set `MONGO_URI` and your TURN variables in the dashboard. In production `CORS_ORIGINS` must list your frontend URL.
+
+Health check: `GET /health`.
+
+## 🔌 API
+
+| Method | Path | Auth |
+|---|---|---|
+| POST | `/api/v1/users/register` | – |
+| POST | `/api/v1/users/login` | – |
+| POST | `/api/v1/users/logout` | Bearer |
+| GET  | `/api/v1/users/me` | Bearer |
+| GET  | `/api/v1/users/get_all_activity` | Bearer |
+| POST | `/api/v1/users/add_to_activity` | Bearer |
+| DELETE | `/api/v1/users/activity/:id` | Bearer |
+| GET  | `/api/v1/ice-servers` | – |
+
+## 📈 Scaling notes
+
+MeetHive uses a mesh topology: every participant sends their video to every other participant. That works well up to roughly 6–10 people. For larger meetings (the old README's "100+"), you'd need an SFU such as LiveKit, mediasoup or Janus. Room state lives in memory, so run a single backend instance, or add the Socket.IO Redis adapter before scaling out.
