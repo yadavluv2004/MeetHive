@@ -57,7 +57,17 @@ npm start                 # http://localhost:3000
 
 > Browsers only allow camera/mic on **HTTPS** or `localhost`. To test from another device, use the deployed HTTPS site or a tunnel (e.g. `ngrok http 3000`), not `http://192.168.x.x`.
 
-## 🚀 Deploying (Render)
+## 🚀 Deploying
+
+### Frontend on Vercel
+1. Vercel → **Add New Project** → import this repo.
+2. Set **Root Directory** to `fontend` (the framework is detected as Create React App; `fontend/vercel.json` adds the SPA rewrites).
+3. Add the environment variable `REACT_APP_SERVER_URL` = your backend URL, e.g. `https://meethivebackend.onrender.com`.
+4. Deploy, then add the Vercel URL (e.g. `https://meethive.vercel.app`) to the backend's `CORS_ORIGINS`.
+
+> The backend can't run on Vercel: it needs a long-lived Socket.IO (WebSocket) server, and Vercel functions are serverless. Host it on Render, Railway or Fly.io.
+
+### Backend (and optionally frontend) on Render
 
 `render.yaml` defines both services. In Render: **New → Blueprint**, select the repo, then set `MONGO_URI` and your TURN variables in the dashboard. In production `CORS_ORIGINS` must list your frontend URL.
 
